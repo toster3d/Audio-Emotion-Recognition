@@ -1,3 +1,5 @@
+# Wstępny konspekt projektu
+
 **1. Wstęp**
 - Cel projektu: Stworzenie modelu rozpoznającego emocje w nagraniach audio
 
@@ -53,6 +55,7 @@
 - Ewaluacja modelu ensemble w porównaniu z pojedynczymi modelami
 
 **7. Wnioski i przyszłe kierunki**
+
 - Podsumowanie wyników
 
 - Analiza efektywności różnych reprezentacji audio
@@ -67,39 +70,36 @@
 
 **Biblioteki do przetwarzania audio:**
 
-***librosa*** - do ekstrakcji cech audio i tworzenia spektrogramów Mel'a
+- ***librosa*** - do ekstrakcji cech audio i tworzenia spektrogramów Mel'a
 
-***tensorflow-io**** - do efektywnego przetwarzania danych audio w TensorFlow
+- ***tensorflow-io**** - do efektywnego przetwarzania danych audio w TensorFlow
 
-***pyAudioAnalysis**** - do ekstrakcji dodatkowych cech audio
+- ***pyAudioAnalysis**** - do ekstrakcji dodatkowych cech audio
 
 **Biblioteki uczenia maszynowego:**
 
-***TensorFlow*** - do implementacji modeli CNN
+- ***TensorFlow*** - do implementacji modeli CNN
 
-***Keras*** - do szybkiego prototypowania i eksperymentowania z różnymi architekturami
+- ***Keras*** - do szybkiego prototypowania i eksperymentowania z różnymi architekturami
 
 **Biblioteki do wizualizacji:**
 
-***matplotlib i seaborn*** - do tworzenia wykresów i wizualizacji wyników
+- ***matplotlib i seaborn*** - do tworzenia wykresów i wizualizacji wyników
 
-***librosa.display*** - do wizualizacji spektrogramów i innych reprezentacji audio
+- ***librosa.display*** - do wizualizacji spektrogramów i innych reprezentacji audio
 
 **Narzędzia do zarządzania eksperymentami:**
 
-***TensorBoard*** - do monitorowania procesu treningu i wizualizacji wyników
+- ***TensorBoard*** - do monitorowania procesu treningu i wizualizacji wyników
 
-***MLflow*** - do śledzenia eksperymentów i wersjonowania modeli
+- ***MLflow*** - do śledzenia eksperymentów i wersjonowania modeli
 
 **Środowisko pracy:**
 
-***Jupyter Notebook*** - do interaktywnej analizy danych i prototypowania
+- ***Jupyter Notebook*** - do interaktywnej analizy danych i prototypowania
 
-***Google Colab z GPU*** - do treningu modeli wymagających dużej mocy obliczeniowej
+- ***Google Colab z GPU*** - do treningu modeli wymagających dużej mocy obliczeniowej
 
 **Narzędzia do wersjonowania kodu:**
-***Git i GitHub*** - do kontroli wersji i współpracy
 
-
-
-Git i GitHub - do kontroli wersji i współpracy
+- ***Git i GitHub*** - do kontroli wersji i współpracy
