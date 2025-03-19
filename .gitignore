@@ -1,0 +1,59 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+*.lock
+data/
+
+# Jupyter Notebooks
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+*.nbconvert.ipynb
+jupyter_notebook_config.py
+
+# Data Science
+*.csv
+*.parquet
+*.h5
+*.hdf5
+*.pkl
+*.pickle
+*.joblib
+*.model
+*.weights
+*.bin
+
+# Środowiska i IDE
+.env
+.venv
+env/
+venv/
+ENV/
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Logi i raporty
+logs/
+*.log
+*.out
+wandb/
+mlruns/
+lightning_logs/
+runs/
+results/
+
+# Pozostałe
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.coverage
+htmlcov/

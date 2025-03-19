@@ -1,0 +1,9 @@
+[project]
+name = "Audio_emotion_Recognition"
+version = "0.1.0"
+description = ""
+requires-python = ">=3.11"
+dependencies = [
+    "datasets>=3.4.1",
+    "requests>=2.32.3",
+]
