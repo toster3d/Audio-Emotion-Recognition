@@ -2,9 +2,31 @@
 name = "Audio_emotion_Recognition"
 version = "0.1.0"
 description = ""
-requires-python = ">=3.11"
+requires-python = ">=3.9"
 dependencies = [
     "datasets>=3.4.1",
+    "librosa>=0.11.0",
+    "soundfile>=0.13.1",
     "requests>=2.32.3",
     "ruff>=0.11.0",
+]
+
+[project.optional-dependencies]
+# Zależności używane tylko do rozwoju (linting, testy itp.)
+dev = [
+    "ruff>=0.11.0",
+]
+
+# Zależności związane z przetwarzaniem audio
+audio = [
+    "librosa>=0.11.0",
+    "soundfile>=0.13.1",
+    "soxr>=0.5.0.post1",
+]
+
+# Zależności związane z przetwarzaniem danych
+data = [
+    "datasets>=3.4.1",
+    "scikit-learn>=1.6.1",
+    "scipy>=1.13.1",
 ]
