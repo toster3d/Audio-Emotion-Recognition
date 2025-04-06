@@ -1,21 +1,21 @@
 import os
 from datasets import load_dataset
+from config import DATASET_PATH  # Importowanie ścieżki do zbioru danych z konfiguracji
 
 def download_and_save_dataset():
-    # Create data folder if it doesn't exist
-    folder_name = 'data'
+    # Utwórz folder danych, jeśli nie istnieje
+    folder_name = os.path.dirname(DATASET_PATH)  # Użyj ścieżki z konfiguracji
     if not os.path.exists(folder_name):
         os.makedirs(folder_name)
-        print(f"Folder '{folder_name}' has been created.")
+        print(f"Folder '{folder_name}' został utworzony.")
 
-    # Download the nEMO dataset from Hugging Face
-    print("Downloading nEMO dataset from Hugging Face...")
+    # Pobierz zbiór danych nEMO z Hugging Face
+    print("Pobieranie zbioru danych nEMO z Hugging Face...")
     dataset = load_dataset("amu-cai/nEMO")
     
-    # Save dataset
-    save_path = os.path.join(folder_name, 'nemo_dataset')
-    dataset.save_to_disk(save_path)
-    print(f"Dataset saved to {save_path}")
+    # Zapisz zbiór danych
+    dataset.save_to_disk(DATASET_PATH)  # Zapisz w ścieżce z konfiguracji
+    print(f"Zbiór danych zapisany w {DATASET_PATH}")
     
     return dataset
 

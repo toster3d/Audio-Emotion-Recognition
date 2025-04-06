@@ -1,3 +1,4 @@
+# Start of Selection
 # Python
 .venv/
 __pycache__/
@@ -8,6 +9,7 @@ __pycache__/
 *.sqlite3
 *.lock
 data/
+.activ_venv 
 
 # Jupyter Notebooks
 .ipynb_checkpoints/
@@ -57,3 +59,4 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+# End of Selection

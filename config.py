@@ -13,6 +13,7 @@ EARLY_STOPPING_PATIENCE = 7
 MODEL_DIR = 'model_outputs'
 TIMESTAMP = datetime.now().strftime('%Y%m%d_%H%M%S')
 MODEL_PATH = os.path.join(MODEL_DIR, f'best_model_{TIMESTAMP}.pt')
+DATASET_PATH = 'data/nemo_dataset'
 
 # Upewnij się, że katalog modeli istnieje
 os.makedirs(MODEL_DIR, exist_ok=True)

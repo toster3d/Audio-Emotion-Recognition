@@ -3,12 +3,12 @@ import torch
 
 
 class AudioAugmentation:
-    @staticmethod
+
     def add_noise(spectrogram, noise_level=0.005):
         noise = np.random.randn(*spectrogram.shape) * noise_level
         return spectrogram + noise
     
-    @staticmethod
+    
     def time_shift(spectrogram, shift_range=5):
         shift = np.random.randint(-shift_range, shift_range)
         if shift > 0:
@@ -16,7 +16,7 @@ class AudioAugmentation:
         else:
             return np.pad(spectrogram, ((0, 0), (-shift, 0)), mode='constant')[:, :shift]
     
-    @staticmethod
+    
     def frequency_mask(spectrogram, max_mask_width=10, num_masks=1):
         result = spectrogram.copy()
         n_mels, n_steps = spectrogram.shape
@@ -28,7 +28,7 @@ class AudioAugmentation:
         
         return result
     
-    @staticmethod
+
     def time_mask(spectrogram, max_mask_width=20, num_masks=1):
         result = spectrogram.copy()
         n_mels, n_steps = spectrogram.shape
@@ -40,7 +40,6 @@ class AudioAugmentation:
         
         return result
     
-    @staticmethod
     def apply_augmentation(spectrogram, augmentation_prob=0.5):
         aug_spectrogram = spectrogram.copy()
         
