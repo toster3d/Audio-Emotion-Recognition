@@ -1,0 +1,13 @@
+Raport klasyfikacji:
+              precision    recall  f1-score   support
+
+       Złość       0.45      0.72      0.55       150
+      Strach       0.53      0.48      0.50       147
+   Szczęście       0.50      0.43      0.46       150
+      Smutek       0.57      0.64      0.60       154
+ Zaskoczenie       0.54      0.32      0.40       134
+   Neutralny       0.52      0.46      0.49       162
+
+    accuracy                           0.51       897
+   macro avg       0.52      0.51      0.50       897
+weighted avg       0.52      0.51      0.50       897
