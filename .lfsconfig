@@ -1,0 +1,4 @@
+[lfs]
+    batch = true
+    concurrenttransfers = 10
+    fetchrecentalways = false 

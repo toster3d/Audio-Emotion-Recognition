@@ -1,13 +1,16 @@
 # Python
-.venv/
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.venv/
+env/
+venv/
+ENV/
 *.db
 *.sqlite3
 *.lock
-data/
+.activ_venv 
 
 # Jupyter Notebooks
 .ipynb_checkpoints/
@@ -26,29 +29,33 @@ jupyter_notebook_config.py
 *.model
 *.weights
 *.bin
+*.arrow
 
-# Środowiska i IDE
-.env
-.venv
-env/
-venv/
-ENV/
+# Logi i raporty
+logs/
+*.log
+*.out
+mlruns/
+wandb/
+lightning_logs/
+runs/
+results/
+ensemble_outputs/
+feature_comparison_results/
+model_outputs/
+spectrogram_model_results/
+*/ensemble_outputs/
+*/feature_comparison_results/
+*/model_outputs/
+*/spectrogram_model_results/
+
+# IDE
 .idea/
 .vscode/
 *.swp
 *.swo
 .DS_Store
 Thumbs.db
-
-# Logi i raporty
-logs/
-*.log
-*.out
-wandb/
-mlruns/
-lightning_logs/
-runs/
-results/
 
 # Pozostałe
 dist/
@@ -57,3 +64,30 @@ build/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Wagi modeli
+*.pth
+*.pt
+*.pth.tar
+*.pth.tar.gz
+
+# Foldery z wynikami eksperymentów
+processed_features/
+data/
+src/data/
+src/processed_features/
+src/ensemble_outputs/
+src/feature_comparison_results/
+
+# Duże pliki graficzne
+*.png
+!README_assets/*.png  # Dozwolone obrazki do dokumentacji w README
+
+# Duże pliki danych
+src/data/nemo_dataset/train/data-*.arrow
+
+# NIE wykluczaj tych plików konfiguracyjnych
+!pyproject.toml
+!uv.lock
+!requirements.txt
+
