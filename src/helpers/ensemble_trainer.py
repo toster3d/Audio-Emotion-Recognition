@@ -45,14 +45,14 @@ class EnsembleModelTrainer:
         self.base_models = {}
         self.dataset = None
         
-        # Ładowanie modeli bazowych
+        # Proces ładowania modeli bazowych
         self._load_base_models()
         
-        # Tworzenie katalogów wyjściowych
+        # Proces tworzenia katalogów wyjściowych
         self._create_output_directories()
         
     def _create_output_directories(self):
-        """Tworzy wymagane katalogi wyjściowe"""
+        """Tworzenie wymaganych katalogów wyjściowych"""
         dirs = [
             os.path.join(self.output_dir, "models"),
             os.path.join(self.output_dir, "evaluation"),
@@ -64,11 +64,11 @@ class EnsembleModelTrainer:
             os.makedirs(directory, exist_ok=True)
     
     def _load_base_models(self):
-        """Ładowanie wszystkich modeli bazowych"""
+        """Proces ładowania wszystkich modeli bazowych"""
         for feature_type, model_path in self.model_paths.items():
             model = load_pretrained_model(
                 model_path, 
-                self.model_class  # Użyj przekazanej klasy modelu
+                self.model_class  # Użycie przekazanej klasy modelu
             )
             if model is not None:
                 self.base_models[feature_type] = model.to(self.device)
@@ -80,20 +80,20 @@ class EnsembleModelTrainer:
     
     def _create_dataset(self):
         """
-        Tworzenie zbioru danych, jeśli nie został jeszcze utworzony.
+        Proces tworzenia zbioru danych, jeśli nie został jeszcze utworzony.
         
         Zwraca:
             list: Etykiety dla próbek w zbiorze danych
         """
         if self.dataset is None:
             try:
-                # Ładowanie etykiet z pierwszego pliku cech, aby skonfigurować zbiór danych
+                # Ładowanie etykiet z pierwszego pliku cech w celu skonfigurowania zbioru danych
                 feature_file = next(iter(self.feature_files.values()))
                 with open(feature_file, 'rb') as f:
                     data = pickle.load(f)
                 labels = data['labels']
                 
-                # Pobierz nazwy klas, jeśli są dostępne
+                # Pobieranie nazw klas, jeśli są dostępne
                 if 'label_encoder' in data and hasattr(data['label_encoder'], 'classes_'):
                     self.class_names = data['label_encoder'].classes_
                     
@@ -105,13 +105,13 @@ class EnsembleModelTrainer:
     
     def _create_dataloaders(self, dataset, train_indices, val_indices, batch_size=None):
         """
-        Tworzenie dataloaderów dla treningu i walidacji.
+        Proces tworzenia dataloaderów dla treningu i walidacji.
         
         Argumenty:
             dataset (Dataset): Zbiór danych
             train_indices (list): Indeksy próbek treningowych
             val_indices (list): Indeksy próbek walidacyjnych
-            batch_size (int, optional): Rozmiar batcha. Jeśli None, użyj wartości z konfiguracji.
+            batch_size (int, optional): Rozmiar batcha. Jeśli None, używana jest wartość z konfiguracji.
             
         Zwraca:
             tuple: (train_loader, val_loader)
@@ -140,13 +140,13 @@ class EnsembleModelTrainer:
     
     def optimize_weights(self, n_trials=None, timeout=None, n_folds=None, test_size=None):
         """
-        Optymalizacja wag ensemble przy użyciu Optuna.
+        Proces optymalizacji wag ensemble przy użyciu Optuna.
         
         Argumenty:
-            n_trials (int, optional): Liczba prób Optuna. Jeśli None, użyj wartości z konfiguracji.
-            timeout (int, optional): Limit czasu optymalizacji w sekundach. Jeśli None, użyj wartości z konfiguracji.
-            n_folds (int, optional): Liczba foldów walidacji krzyżowej. Jeśli None, użyj wartości z konfiguracji.
-            test_size (float, optional): Frakcja danych testowych. Jeśli None, użyj wartości z konfiguracji.
+            n_trials (int, optional): Liczba prób Optuna. Jeśli None, używana jest wartość z konfiguracji.
+            timeout (int, optional): Limit czasu optymalizacji w sekundach. Jeśli None, używana jest wartość z konfiguracji.
+            n_folds (int, optional): Liczba foldów walidacji krzyżowej. Jeśli None, używana jest wartość z konfiguracji.
+            test_size (float, optional): Frakcja danych testowych. Jeśli None, używana jest wartość z konfiguracji.
             
         Zwraca:
             dict: Zoptymalizowane wagi dla każdego typu cechy
@@ -157,10 +157,10 @@ class EnsembleModelTrainer:
         n_folds = n_folds if n_folds is not None else CV_FOLDS
         test_size = test_size if test_size is not None else TEST_SPLIT
         
-        # Tworzenie zbioru danych, jeśli nie został jeszcze utworzony
+        # Proces tworzenia zbioru danych, jeśli nie został jeszcze utworzony
         labels = self._create_dataset()
         
-        # Tworzenie podziału na trening/test, aby zapobiec wyciekom danych
+        # Proces tworzenia podziału na trening/test, aby zapobiec wyciekom danych
         indices = np.arange(len(labels))
         train_val_indices, _ = train_test_split(
             indices, 
@@ -169,10 +169,10 @@ class EnsembleModelTrainer:
             stratify=labels
         )
         
-        # Pobierz etykiety dla zbioru treningowego/walidacyjnego
+        # Pobieranie etykiet dla zbioru treningowego/walidacyjnego
         train_val_labels = [labels[i] for i in train_val_indices]
         
-        # Tworzenie foldów dla CV
+        # Proces tworzenia foldów dla CV
         cv_folds = stratified_kfold_split(train_val_labels, n_splits=n_folds)
         
         # Mapowanie indeksów foldów CV na oryginalne indeksy zbioru danych
@@ -187,7 +187,7 @@ class EnsembleModelTrainer:
         study_name = f"ensemble_optimization_{timestamp}"
         mlflow.set_experiment(study_name)
         
-        # Tworzenie studium Optuna
+        # Proces tworzenia studium Optuna
         pruner = optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=5)
         sampler = optuna.samplers.TPESampler(seed=SEED)
         
@@ -222,12 +222,12 @@ class EnsembleModelTrainer:
                 eval_folds = original_folds[:min(3, len(original_folds))]
                 
                 for i, (train_indices, val_indices) in enumerate(eval_folds):
-                    # Tworzenie dataloaderów dla tego folda
+                    # Proces tworzenia dataloaderów dla tego folda
                     train_loader, val_loader = self._create_dataloaders(
                         self.dataset, train_indices, val_indices
                     )
                     
-                    # Tworzenie modelu ensemble z sugerowanymi wagami
+                    # Proces tworzenia modelu ensemble z sugerowanymi wagami
                     ensemble = WeightedEnsembleModel(self.base_models, normalized_weights).to(self.device)
                     
                     # Ocena na zbiorze walidacyjnym
@@ -238,7 +238,7 @@ class EnsembleModelTrainer:
                     mlflow.log_metric(f"fold_{i}_accuracy", results['accuracy'])
                     mlflow.log_metric(f"fold_{i}_f1", results['f1'])
                     
-                    # Czyszczenie pamięci
+                    # Proces czyszczenia pamięci
                     del ensemble, train_loader, val_loader
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
@@ -250,17 +250,17 @@ class EnsembleModelTrainer:
                 
                 return mean_accuracy
         
-        # Uruchomienie optymalizacji
+        # Proces uruchamiania optymalizacji
         with mlflow.start_run(run_name=f"optuna_optimization_{timestamp}"):
             # Logowanie parametrów studium
             mlflow.log_param("n_trials", n_trials)
             mlflow.log_param("timeout", timeout)
             mlflow.log_param("feature_types", self.feature_types)
             
-            # Optymalizacja
+            # Proces optymalizacji
             study.optimize(objective, n_trials=n_trials, timeout=timeout)
             
-            # Pobranie najlepszych parametrów
+            # Pobieranie najlepszych parametrów
             best_weights = {ft: study.best_params[f"weight_{ft}"] for ft in self.feature_types}
             
             # Normalizacja wag, aby suma wynosiła 1
@@ -272,7 +272,7 @@ class EnsembleModelTrainer:
                 mlflow.log_param(f"best_weight_{ft}", weight)
             mlflow.log_metric("best_val_accuracy", study.best_value)
             
-            # Zapisanie wykresów optymalizacji
+            # Proces zapisywania wykresów optymalizacji
             fig_dir = os.path.join(self.output_dir, "optimization_plots")
             
             # Wykres historii optymalizacji
@@ -285,7 +285,7 @@ class EnsembleModelTrainer:
             mlflow.log_artifact(history_path)
             plt.close()
             
-            # Generowanie wykresu ważności
+            # Proces generowania wykresu ważności
             plt.figure(figsize=(10, 6))
             optuna.visualization.matplotlib.plot_param_importances(study)
             plt.title('Ważności parametrów')
@@ -299,12 +299,12 @@ class EnsembleModelTrainer:
     
     def train_and_evaluate(self, weights, test_size=None, batch_size=None):
         """
-        Trenowanie i ocena modelu ensemble z podanymi wagami.
+        Proces trenowania i oceny modelu ensemble z podanymi wagami.
         
         Argumenty:
             weights (dict): Słownik wag dla każdego typu cechy
-            test_size (float, optional): Frakcja danych testowych. Jeśli None, użyj wartości z konfiguracji.
-            batch_size (int, optional): Rozmiar batcha. Jeśli None, użyj wartości z konfiguracji.
+            test_size (float, optional): Frakcja danych testowych. Jeśli None, używana jest wartość z konfiguracji.
+            batch_size (int, optional): Rozmiar batcha. Jeśli None, używana jest wartość z konfiguracji.
             
         Zwraca:
             tuple: (model, wyniki_testowe)
@@ -313,10 +313,10 @@ class EnsembleModelTrainer:
         test_size = test_size if test_size is not None else TEST_SPLIT
         batch_size = batch_size if batch_size is not None else BATCH_SIZE
         
-        # Tworzenie zbioru danych, jeśli nie został jeszcze utworzony
+        # Proces tworzenia zbioru danych, jeśli nie został jeszcze utworzony
         labels = self._create_dataset()
         
-        # Tworzenie podziału na trening/test
+        # Proces tworzenia podziału na trening/test
         indices = np.arange(len(labels))
         train_indices, test_indices = train_test_split(
             indices, 
@@ -334,10 +334,10 @@ class EnsembleModelTrainer:
             for ft, weight in weights.items():
                 mlflow.log_param(f"weight_{ft}", weight)
             
-            # Tworzenie modelu ensemble z podanymi wagami
+            # Proces tworzenia modelu ensemble z podanymi wagami
             ensemble_model = WeightedEnsembleModel(self.base_models, weights).to(self.device)
             
-            # Tworzenie dataloadera testowego
+            # Proces tworzenia dataloadera testowego
             test_dataset = Subset(self.dataset, test_indices)
             test_loader = DataLoader(
                 test_dataset,
@@ -361,7 +361,7 @@ class EnsembleModelTrainer:
             mlflow.log_metric("test_recall", test_results['recall'])
             mlflow.log_metric("test_f1", test_results['f1'])
             
-            # Dla każdej klasy logowanie precyzji, recall i F1
+            # Logowanie precyzji, recall i F1 dla każdej klasy
             for i, class_name in enumerate(self.class_names):
                 if class_name in test_results['report']:
                     class_metrics = test_results['report'][class_name]
@@ -369,7 +369,7 @@ class EnsembleModelTrainer:
                     mlflow.log_metric(f"test_{class_name}_recall", class_metrics['recall'])
                     mlflow.log_metric(f"test_{class_name}_f1-score", class_metrics['f1-score'])
             
-            # Tworzenie wykresu macierzy pomyłek
+            # Proces tworzenia wykresu macierzy pomyłek
             plt.figure(figsize=(10, 8))
             cm_normalized = test_results['cm'].astype('float') / test_results['cm'].sum(axis=1)[:, np.newaxis]
             sns.heatmap(cm_normalized, annot=True, fmt='.2f', cmap='Blues',
@@ -379,20 +379,20 @@ class EnsembleModelTrainer:
             plt.xlabel('Przewidywana etykieta')
             plt.tight_layout()
             
-            # Zapis wykresu
+            # Proces zapisywania wykresu
             cm_dir = os.path.join(self.output_dir, "evaluation")
             cm_path = os.path.join(cm_dir, "confusion_matrix.png")
             plt.savefig(cm_path)
             mlflow.log_artifact(cm_path)
             plt.close()
             
-            # Zapis modelu
+            # Proces zapisywania modelu
             model_dir = os.path.join(self.output_dir, "models")
             model_path = os.path.join(model_dir, "ensemble_model.pt")
             torch.save(ensemble_model.state_dict(), model_path)
             mlflow.log_artifact(model_path)
             
-            # Zapis wag
+            # Proces zapisywania wag
             weights_path = os.path.join(self.output_dir, "optimized_weights.yaml")
             with open(weights_path, "w") as f:
                 yaml.dump(weights, f)
@@ -401,12 +401,12 @@ class EnsembleModelTrainer:
         return ensemble_model, test_results
     
     def analyze_errors(self, model, test_size=None, batch_size=None):
-        """Analizuje przypadki, które model sklasyfikował niepoprawnie"""
+        """Analiza przypadków, które model sklasyfikował niepoprawnie"""
         # Parametry z konfiguracji lub podane
         test_size = test_size if test_size is not None else TEST_SPLIT
         batch_size = batch_size if batch_size is not None else BATCH_SIZE
         
-        # Tworzenie zbioru danych i podziału
+        # Proces tworzenia zbioru danych i podziału
         labels = self._create_dataset()
         indices = np.arange(len(labels))
         _, test_indices = train_test_split(
@@ -416,7 +416,7 @@ class EnsembleModelTrainer:
             stratify=labels
         )
         
-        # Ewaluacja modelu i znalezienie błędów
+        # Proces ewaluacji modelu i identyfikacji błędów
         test_dataset = Subset(self.dataset, test_indices)
         test_loader = DataLoader(
             test_dataset,
@@ -430,15 +430,15 @@ class EnsembleModelTrainer:
         
         with torch.no_grad():
             for i, (inputs, label) in enumerate(test_loader):
-                # Przenieś dane wejściowe na urządzenie
+                # Przeniesienie danych wejściowych na urządzenie
                 label = label.to(self.device)
                 inputs = {k: v.to(self.device) for k, v in inputs.items()}
                 
-                # Przepływ do przodu
+                # Proces przepływu do przodu
                 output = model(inputs)
                 _, pred = torch.max(output, 1)
                 
-                # Sprawdź, czy klasyfikacja jest błędna
+                # Sprawdzenie, czy klasyfikacja jest błędna
                 if pred.item() != label.item():
                     errors.append({
                         'index': test_indices[i],
@@ -448,7 +448,7 @@ class EnsembleModelTrainer:
                         'true_label_confidence': torch.softmax(output, dim=1)[0][label].item()
                     })
         
-        # Zapisz wyniki analizy
+        # Proces zapisywania wyników analizy
         error_dir = os.path.join(self.output_dir, "error_analysis")
         error_path = os.path.join(error_dir, "classification_errors.csv")
         
@@ -460,7 +460,7 @@ class EnsembleModelTrainer:
         return error_df
     
     def save_full_model(self, model, path=None):
-        """Zapisuje pełny model, nie tylko stan parametrów"""
+        """Zapis pełnego modelu, nie tylko stanu parametrów"""
         if path is None:
             path = os.path.join(self.output_dir, "models", "full_ensemble_model.pt")
             
@@ -475,7 +475,7 @@ class EnsembleModelTrainer:
         
     @staticmethod
     def load_full_model(path, base_models):
-        """Ładuje pełny model z pliku"""
+        """Ładowanie pełnego modelu z pliku"""
         checkpoint = torch.load(path)
         model = WeightedEnsembleModel(
             base_models, 

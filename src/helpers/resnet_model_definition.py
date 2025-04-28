@@ -2,7 +2,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
 
-# Definicja modelu ResNet
+# Klasa definiująca model AudioResNet oparty na architekturze ResNet
 class AudioResNet(nn.Module):
     def __init__(self, num_classes=6, dropout_rate=0.5):
         super(AudioResNet, self).__init__()
@@ -11,10 +11,10 @@ class AudioResNet(nn.Module):
         
         num_features = self.resnet.fc.in_features
         self.dropout = nn.Dropout(dropout_rate)
-        self.resnet.fc = nn.Identity()  # Usuń ostatnią warstwę
+        self.resnet.fc = nn.Identity()  # Ostatnia warstwa została usunięta
         self.fc = nn.Linear(num_features, num_classes)
         
-        # Inicjalizacja wag
+        # Inicjalizacja wag dla różnych warstw modelu
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
                 nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
@@ -26,6 +26,7 @@ class AudioResNet(nn.Module):
                 nn.init.constant_(m.bias, 0)
         
     def forward(self, x):
+        # Przechodzenie danych przez model
         x = self.resnet(x)
         x = self.dropout(x)
         x = self.fc(x)

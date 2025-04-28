@@ -43,7 +43,7 @@ class AudioAugmentation:
     def apply_augmentation(spectrogram, augmentation_prob=0.5):
         aug_spectrogram = spectrogram.copy()
         
-        # Losowo wybierz i zastosuj augmentacje
+        # Augmentacja jest stosowana losowo na podstawie prawdopodobieństwa
         if np.random.random() < augmentation_prob:
             aug_spectrogram = AudioAugmentation.add_noise(aug_spectrogram)
         if np.random.random() < augmentation_prob:
@@ -53,7 +53,7 @@ class AudioAugmentation:
         
         return aug_spectrogram
     
-    # Niestandardowy zestaw danych z augmentacją
+    # Zestaw danych audio z zastosowaną augmentacją
 class AugmentedAudioDataset(torch.utils.data.Dataset):
     def __init__(self, features, labels, transform=None, augment=False):
         self.features = features
@@ -68,15 +68,14 @@ class AugmentedAudioDataset(torch.utils.data.Dataset):
         feature = self.features[idx].squeeze(0)  # Usunięcie wymiaru kanału
         label = self.labels[idx]
         
-        # Zastosuj augmentację, jeśli włączona
+        # Augmentacja jest stosowana, gdy jest włączona
         if self.augment and np.random.random() < 0.5:
             feature = AudioAugmentation.apply_augmentation(feature)
         
-        # Dodaj z powrotem wymiar kanału
+        # Przywrócenie wymiaru kanału
         feature = feature[np.newaxis, :, :]
         
         # Konwersja na tensor
         feature = torch.FloatTensor(feature)
         
         return feature, label
-

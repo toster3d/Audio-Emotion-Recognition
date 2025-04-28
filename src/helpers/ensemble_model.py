@@ -19,26 +19,26 @@ class WeightedEnsembleModel(nn.Module):
         
         # Inicjalizacja wag
         if weights is None:
-            # Inicjalizacja równymi wagami
+            # Równomierne przypisanie wag
             weights_tensor = torch.ones(len(self.feature_types)) / len(self.feature_types)
         else:
-            # Użyj podanego słownika wag
+            # Wykorzystanie podanego słownika wag
             weights_tensor = torch.tensor([weights[ft] for ft in self.feature_types])
         
-        # Uczyń wagi parametrami uczącymi się, jeśli to konieczne
+        # Umożliwienie uczenia się wag jako parametrów, jeśli to konieczne
         self.weights = nn.Parameter(weights_tensor, requires_grad=False)
         
-        # Parametr temperatury do ostrzenia/łagodzenia prognoz
+        # Parametr temperatury do regulacji prognoz
         self.temperature = nn.Parameter(torch.tensor(temperature), requires_grad=False)
         
-        # Siła regularizacji
+        # Ustalenie siły regulacji
         self.regularization_strength = regularization_strength
         
         # Generowanie znormalizowanych wag do wnioskowania
         self._update_normalized_weights()
             
     def _update_normalized_weights(self):
-        """Aktualizuje właściwość znormalizowanych wag"""
+        """Aktualizacja znormalizowanych wag"""
         normalized = F.softmax(self.weights, dim=0)
         self.normalized_weights = {ft: normalized[i].item() 
                                   for i, ft in enumerate(self.feature_types)}
@@ -59,23 +59,23 @@ class WeightedEnsembleModel(nn.Module):
         
         for i, ft in enumerate(self.feature_types):
             if ft in inputs:
-                # Uzyskaj wyjście modelu
+                # Uzyskiwanie wyjścia modelu
                 model_output = self.models[ft](inputs[ft])
-                # Zastosuj skalowanie temperatury
+                # Skalowanie wyjścia za pomocą temperatury
                 scaled_output = model_output / self.temperature
-                # Zastosuj softmax, aby uzyskać prawdopodobieństwa
+                # Zastosowanie softmax w celu uzyskania prawdopodobieństw
                 probs = F.softmax(scaled_output, dim=1)
                 outputs.append(probs)
                 available_features.append(i)
         
         if not outputs:
-            raise ValueError("Nie podano żadnych danych wejściowych dla żadnego modelu")
+            raise ValueError("Brak danych wejściowych dla modeli")
         
-        # Uzyskaj wagi dla dostępnych cech i znormalizuj je
+        # Uzyskiwanie wag dla dostępnych cech i ich normalizacja
         available_weights = self.weights[available_features]
         normalized_weights = F.softmax(available_weights, dim=0)
         
-        # Zastosuj wagi do wyjścia każdego modelu
+        # Zastosowanie wag do wyjścia każdego modelu
         weighted_sum = torch.zeros_like(outputs[0])
         for output, weight in zip(outputs, normalized_weights):
             weighted_sum += output * weight
@@ -83,12 +83,12 @@ class WeightedEnsembleModel(nn.Module):
         return weighted_sum
     
     def get_weights(self):
-        """Zwraca aktualne znormalizowane wagi"""
+        """Zwracanie aktualnych znormalizowanych wag"""
         return self._update_normalized_weights()
     
     def set_weights(self, weights_dict):
         """
-        Ustaw nowe wagi ze słownika
+        Ustawianie nowych wag na podstawie słownika
         
         Argumenty:
             weights_dict (dict): Słownik wag w formacie {typ_cechy: waga}
@@ -99,12 +99,12 @@ class WeightedEnsembleModel(nn.Module):
         self._update_normalized_weights()
     
     def l1_regularization(self):
-        """Zastosuj regularizację L1, aby zachęcić do rzadkich wag"""
+        """Zastosowanie regulacji L1 w celu promowania rzadkich wag"""
         return self.regularization_strength * torch.norm(self.weights, p=1)
         
     def save(self, path):
         """
-        Zapisz model wraz z wagami i parametrami
+        Zapis modelu wraz z wagami i parametrami
         
         Argumenty:
             path (str): Ścieżka do zapisu modelu
@@ -121,7 +121,7 @@ class WeightedEnsembleModel(nn.Module):
     @classmethod
     def load(cls, path, models_dict):
         """
-        Załaduj model z pliku
+        Ładowanie modelu z pliku
         
         Argumenty:
             path (str): Ścieżka do pliku modelu
@@ -131,12 +131,12 @@ class WeightedEnsembleModel(nn.Module):
             WeightedEnsembleModel: Załadowany model
         """
         state = torch.load(path)
-        # Utwórz model z tymi samymi parametrami
+        # Tworzenie modelu z tymi samymi parametrami
         model = cls(
             models_dict=models_dict,
             temperature=state['temperature'],
             regularization_strength=state['regularization_strength']
         )
-        # Załaduj stan
+        # Ładowanie stanu
         model.load_state_dict(state['model_state_dict'])
         return model

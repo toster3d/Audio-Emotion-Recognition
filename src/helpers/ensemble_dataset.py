@@ -27,7 +27,7 @@ class EnsembleDatasetIndexed(Dataset):
     def __getitem__(self, idx):
         features = {}
         for feature_type in self.feature_types:
-            # Ładuj plik cech, jeśli nie został jeszcze załadowany
+            # Wczytywanie pliku cech, jeśli nie został jeszcze załadowany
             if feature_type not in self.feature_data:
                 try:
                     with open(self.feature_files[feature_type], 'rb') as f:
@@ -36,10 +36,10 @@ class EnsembleDatasetIndexed(Dataset):
                 except (FileNotFoundError, KeyError) as e:
                     raise RuntimeError(f"Błąd ładowania pliku cech {self.feature_files[feature_type]}: {e}")
             
-            # Pobierz cechę dla tego indeksu
+            # Uzyskiwanie cechy dla danego indeksu
             feature = self.feature_data[feature_type][idx]
             
-            # Upewnij się, że cecha ma odpowiedni kształt (dodaj wymiar kanału, jeśli to konieczne)
+            # Zapewnienie odpowiedniego kształtu cechy (dodanie wymiaru kanału, jeśli to konieczne)
             if feature.ndim == 2:
                 feature = np.expand_dims(feature, 0)
             features[feature_type] = feature
@@ -48,7 +48,7 @@ class EnsembleDatasetIndexed(Dataset):
         return features, label
     
     def clear_cache(self):
-        """Wyczyść pamięć podręczną danych cech, aby zwolnić pamięć"""
+        """Wyczyszczenie pamięci podręcznej danych cech w celu zwolnienia pamięci"""
         self.feature_data = {}
         gc.collect()
         
@@ -73,7 +73,7 @@ class EnsembleDataset(Dataset):
         features = {}
         for feature_type in self.feature_types:
             feature = self.features_dict[feature_type][idx]
-            # Upewnij się, że cecha ma odpowiedni kształt (dodaj wymiar kanału, jeśli to konieczne)
+            # Zapewnienie odpowiedniego kształtu cechy (dodanie wymiaru kanału, jeśli to konieczne)
             if feature.ndim == 2:
                 feature = np.expand_dims(feature, 0)
             features[feature_type] = feature
@@ -94,13 +94,13 @@ def ensemble_collate_fn(batch):
     features_dict = {}
     labels = []
     
-    # Pobierz wszystkie typy cech z pierwszej próbki
+    # Uzyskiwanie wszystkich typów cech z pierwszej próbki
     if not batch:
         return {}, torch.tensor([])
         
     feature_types = list(batch[0][0].keys())
     
-    # Zbieraj cechy i etykiety ze wszystkich próbek
+    # Zbieranie cech i etykiet ze wszystkich próbek
     for sample_features, sample_label in batch:
         for ft in feature_types:
             if ft not in features_dict:
@@ -108,12 +108,12 @@ def ensemble_collate_fn(batch):
             features_dict[ft].append(torch.FloatTensor(sample_features[ft]))
         labels.append(sample_label)
     
-    # Konwertuj listy na tensory
+    # Konwersja list na tensory
     for ft in features_dict:
         try:
             features_dict[ft] = torch.stack(features_dict[ft])
         except:
-            # Obsłuż tensory o zmiennym rozmiarze (jeśli występują)
+            # Obsługa tensorów o zmiennym rozmiarze (jeśli występują)
             shapes = [f.shape for f in features_dict[ft]]
             max_shape = [max(dim) for dim in zip(*[s for s in shapes])]
             

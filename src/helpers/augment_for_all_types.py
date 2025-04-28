@@ -8,11 +8,11 @@ class AudioAugmentationStrategy(ABC):
     @abstractmethod
     def apply_augmentation(self, feature, augmentation_prob=0.5):
         """
-        Zastosuj augmentacjÄ dla danego typu reprezentacji audio.
+        Wykonanie augmentacji dla danego typu reprezentacji audio.
         
         Args:
             feature: Cecha audio do augmentacji
-            augmentation_prob: PrawdopodobieĹstwo zastosowania kaĹźdej augmentacji
+            augmentation_prob: Prawdopodobieństwo zastosowania każdej augmentacji
             
         Returns:
             Zaugmentowana cecha audio
@@ -22,7 +22,7 @@ class AudioAugmentationStrategy(ABC):
     @abstractmethod
     def is_applicable(self, feature):
         """
-        SprawdĹş czy dana augmentacja moĹźe byÄ zastosowana do tego typu cech.
+        Ocena możliwości zastosowania augmentacji do danego typu cech.
         
         Args:
             feature: Cecha audio do sprawdzenia
@@ -33,7 +33,7 @@ class AudioAugmentationStrategy(ABC):
         pass
 
 
-# Konkretna implementacja strategii dla spektrogramĂłw
+# Konkretna implementacja strategii dla spektrogramów
 class SpectrogramAugmentation(AudioAugmentationStrategy):
     def apply_augmentation(self, feature, augmentation_prob=0.5):
         aug_feature = feature.copy()
@@ -50,7 +50,7 @@ class SpectrogramAugmentation(AudioAugmentationStrategy):
         return aug_feature
     
     def is_applicable(self, feature):
-        # SprawdĹş czy dane sÄ 2D i majÄ wystarczajÄcy rozmiar
+        # Weryfikacja, czy dane mają 2D i wystarczający rozmiar
         return feature.ndim == 2 and min(feature.shape) > 1
     
     def _add_noise(self, spectrogram, noise_level=0.005):
@@ -68,7 +68,7 @@ class SpectrogramAugmentation(AudioAugmentationStrategy):
         result = spectrogram.copy()
         n_mels, n_steps = spectrogram.shape
         
-        # Dostosuj szerokoĹÄ maski, jeĹli jest za duĹźa
+        # Dostosowanie szerokości maski, jeśli jest zbyt duża
         max_mask_width = min(max_mask_width, n_mels - 1)
         
         if max_mask_width >= 1:
@@ -83,7 +83,7 @@ class SpectrogramAugmentation(AudioAugmentationStrategy):
         result = spectrogram.copy()
         n_mels, n_steps = spectrogram.shape
         
-        # Dostosuj szerokoĹÄ maski, jeĹli jest za duĹźa
+        # Dostosowanie szerokości maski, jeśli jest zbyt duża
         max_mask_width = min(max_mask_width, n_steps - 1)
         
         if max_mask_width >= 1:
@@ -101,14 +101,14 @@ class MFCCAugmentation(AudioAugmentationStrategy):
         aug_feature = feature.copy()
         
         if np.random.random() < augmentation_prob:
-            aug_feature = self._add_noise(aug_feature, noise_level=0.003)  # Mniejszy poziom szumu dla MFCC
+            aug_feature = self._add_noise(aug_feature, noise_level=0.003)  # Zastosowanie mniejszego poziomu szumu dla MFCC
         if np.random.random() < augmentation_prob:
-            aug_feature = self._time_mask(aug_feature, max_mask_width=5)  # WÄĹźsze maski czasowe
+            aug_feature = self._time_mask(aug_feature, max_mask_width=5)  # Zastosowanie węższych masek czasowych
             
         return aug_feature
     
     def is_applicable(self, feature):
-        # MFCC rĂłwnieĹź ma reprezentacjÄ 2D, ale czÄsto ma mniej pasm mel
+        # MFCC również ma reprezentację 2D, ale często ma mniej pasm mel
         return feature.ndim == 2
     
     def _add_noise(self, feature, noise_level=0.003):
@@ -141,11 +141,11 @@ class OneDimensionalAugmentation(AudioAugmentationStrategy):
         return aug_feature
     
     def is_applicable(self, feature):
-        # Dla cech jednowymiarowych, ktĂłre zostaĹy rozszerzone
+        # Weryfikacja dla cech jednowymiarowych, które zostały rozszerzone
         return feature.ndim == 2 and feature.shape[0] >= 1
     
     def _add_noise(self, feature, noise_level=0.001):
-        # Mniejszy poziom szumu dla jednowymiarowych cech
+        # Zastosowanie mniejszego poziomu szumu dla jednowymiarowych cech
         noise = np.random.randn(*feature.shape) * noise_level
         return feature + noise
     
@@ -165,7 +165,7 @@ class ChromaAugmentation(AudioAugmentationStrategy):
         return feature.ndim == 2 and min(feature.shape) > 1
 
     def _add_noise(self, feature, noise_level=0.002):
-        # Niższy poziom szumu dla cech harmonicznych
+        # Zastosowanie niższego poziomu szumu dla cech harmonicznych
         noise = np.random.randn(*feature.shape) * noise_level
         return feature + noise
 
@@ -173,7 +173,7 @@ class ChromaAugmentation(AudioAugmentationStrategy):
         result = feature.copy()
         n_chroma, n_steps = feature.shape
 
-        # Dostosuj szerokość maski
+        # Dostosowanie szerokości maski
         max_mask_width = min(max_mask_width, n_chroma - 1)
 
         if max_mask_width >= 1:
@@ -200,7 +200,7 @@ class TempogramAugmentation(AudioAugmentationStrategy):
         return feature.ndim == 2 and min(feature.shape) > 1
 
     def _add_noise(self, feature, noise_level=0.002):
-        # Niższy poziom szumu dla cech rytmicznych
+        # Zastosowanie niższego poziomu szumu dla cech rytmicznych
         noise = np.random.randn(*feature.shape) * noise_level
         return feature + noise
 
@@ -208,7 +208,7 @@ class TempogramAugmentation(AudioAugmentationStrategy):
         result = feature.copy()
         n_tempogram, n_steps = feature.shape
 
-        # Dostosuj szerokość maski
+        # Dostosowanie szerokości maski
         max_mask_width = min(max_mask_width, n_steps - 1)
 
         if max_mask_width >= 1:
@@ -235,7 +235,7 @@ class SpectralContrastAugmentation(AudioAugmentationStrategy):
         return feature.ndim == 2 and min(feature.shape) > 1
 
     def _add_noise(self, feature, noise_level=0.002):
-        # Niższy poziom szumu dla kontrastu spektralnego
+        # Zastosowanie niższego poziomu szumu dla kontrastu spektralnego
         noise = np.random.randn(*feature.shape) * noise_level
         return feature + noise
 
@@ -243,7 +243,7 @@ class SpectralContrastAugmentation(AudioAugmentationStrategy):
         result = feature.copy()
         n_bands, n_steps = feature.shape
 
-        # Dostosuj szerokość maski
+        # Dostosowanie szerokości maski
         max_mask_width = min(max_mask_width, n_bands - 1)
 
         if max_mask_width >= 1:
@@ -275,7 +275,7 @@ class AudioAugmentationFactory:
             return SpectrogramAugmentation()
 
 
-# Klasa gĹĂłwna augmentacji audio
+# Klasa główna augmentacji audio
 class AudioAugmentation:
     def __init__(self, strategy=None, feature_type=None):
         if strategy:
@@ -283,26 +283,26 @@ class AudioAugmentation:
         elif feature_type:
             self.strategy = AudioAugmentationFactory.get_strategy(feature_type)
         else:
-            self.strategy = SpectrogramAugmentation()  # DomyĹlna strategia
+            self.strategy = SpectrogramAugmentation()  # Domyślna strategia
     
     def apply_augmentation(self, feature, augmentation_prob=0.5):
         """
-        Zastosuj augmentacjÄ do podanej cechy audio.
+        Wykonanie augmentacji dla podanej cechy audio.
         
         Args:
             feature: Cecha audio do augmentacji
-            augmentation_prob: PrawdopodobieĹstwo zastosowania kaĹźdej augmentacji
+            augmentation_prob: Prawdopodobieństwo zastosowania każdej augmentacji
             
         Returns:
-            Zaugmentowana cecha audio lub oryginaĹ, jeĹli augmentacja nie jest moĹźliwa
+            Zaugmentowana cecha audio lub oryginał, jeśli augmentacja nie jest możliwa
         """
         if self.strategy.is_applicable(feature):
             return self.strategy.apply_augmentation(feature, augmentation_prob)
         else:
-            # JeĹli augmentacja nie jest moĹźliwa, zwrĂłÄ oryginaĹ
+            # W przypadku braku możliwości augmentacji, zwracany jest oryginał
             return feature
 
-    # Metody statyczne dla kompatybilnoĹci wstecznej
+    # Metody statyczne dla kompatybilności wstecznej
     @staticmethod
     def add_noise(spectrogram, noise_level=0.005):
         noise = np.random.randn(*spectrogram.shape) * noise_level
@@ -341,7 +341,7 @@ class AudioAugmentation:
         return result
 
 
-# Zmodyfikowana klasa DataSet z obsĹugÄ rĂłĹźnych strategii augmentacji
+# Zmodyfikowana klasa DataSet z obsługą różnych strategii augmentacji
 class AugmentedAudioDataset(torch.utils.data.Dataset):
     def __init__(self, features, labels, feature_type=None, transform=None, augment=False):
         self.features = features
@@ -349,7 +349,7 @@ class AugmentedAudioDataset(torch.utils.data.Dataset):
         self.transform = transform
         self.augment = augment
         
-        # UtwĂłrz odpowiedniÄ strategiÄ augmentacji
+        # Utworzenie odpowiedniej strategii augmentacji
         if feature_type:
             self.augmenter = AudioAugmentation(feature_type=feature_type)
         else:
@@ -359,20 +359,20 @@ class AugmentedAudioDataset(torch.utils.data.Dataset):
         return len(self.labels)
     
     def __getitem__(self, idx):
-    # Pobierz cechę z odpowiednim formatem
+        # Pobranie cechy z odpowiednim formatem
         feature = self.features[idx]
         label = self.labels[idx]
         
-        # Upewnij się, że mamy format 4D [batch, channel, height, width]
-        if feature.ndim == 3:  # Jeśli [batch, height, width]
+        # Weryfikacja formatu 4D [batch, channel, height, width]
+        if feature.ndim == 3:  # Format [batch, height, width]
             feature = feature.reshape(1, feature.shape[0], feature.shape[1], feature.shape[2])
         
-        # Zastosuj augmentację, zachowując format 4D
+        # Zastosowanie augmentacji, zachowując format 4D
         if self.augment and np.random.random() < 0.5:
-            # Wyodrębnij część 3D do augmentacji
+            # Wyodrębnienie części 3D do augmentacji
             feature_3d = feature.squeeze(0)
             feature_3d = self.augmenter.apply_augmentation(feature_3d)
-            # Przywróć do 4D
+            # Przywrócenie do formatu 4D
             feature = feature_3d[np.newaxis, :, :, :]
         
         # Konwersja na tensor
