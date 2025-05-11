@@ -1,5 +1,7 @@
+import json
 import os
 import pickle
+import pandas as pd
 import yaml
 from datetime import datetime
 
@@ -44,6 +46,7 @@ class EnsembleModelTrainer:
         # Stan wewnętrzny
         self.base_models = {}
         self.dataset = None
+        self.ensemble_model = None
         
         # Proces ładowania modeli bazowych
         self._load_base_models()
@@ -65,18 +68,43 @@ class EnsembleModelTrainer:
     
     def _load_base_models(self):
         """Proces ładowania wszystkich modeli bazowych"""
+        loaded_count = 0
+        failed_count = 0
+        
         for feature_type, model_path in self.model_paths.items():
-            model = load_pretrained_model(
-                model_path, 
-                self.model_class  # Użycie przekazanej klasy modelu
-            )
-            if model is not None:
-                self.base_models[feature_type] = model.to(self.device)
+            try:
+                print(f"Próba załadowania modelu dla cechy '{feature_type}' z {model_path}")
+                model = load_pretrained_model(
+                    model_path, 
+                    self.model_class  # Użycie przekazanej klasy modelu
+                )
+                
+                if model is not None:
+                    self.base_models[feature_type] = model.to(self.device)
+                    loaded_count += 1
+                    print(f"Pomyślnie załadowano model dla cechy '{feature_type}'")
+                else:
+                    failed_count += 1
+                    print(f"Nie udało się załadować modelu dla cechy '{feature_type}'")
+            except Exception as e:
+                failed_count += 1
+                print(f"Wystąpił błąd podczas ładowania modelu dla cechy '{feature_type}': {e}")
+        
+        # Szczegółowe podsumowanie ładowania modeli
+        print(f"\nPodsumowanie ładowania modeli:")
+        print(f"- Załadowane modele: {loaded_count}/{len(self.model_paths)}")
+        print(f"- Niepowodzenia: {failed_count}/{len(self.model_paths)}")
             
         if not self.base_models:
+            print("\nNIE UDAŁO SIĘ ZAŁADOWAĆ ŻADNEGO MODELU!")
+            print("Sprawdź następujące rzeczy:")
+            print("1. Czy ścieżki do modeli są poprawne")
+            print("2. Czy formaty modeli są zgodne z aktualną wersją PyTorch")
+            print("3. Czy klasa modelu (model_class) jest zgodna z architekturą zapisanych modeli")
+            print("4. Sprawdź komunikaty błędów powyżej, aby uzyskać więcej szczegółów")
             raise RuntimeError("Nie udało się załadować żadnych modeli!")
         
-        return len(self.base_models)
+        return loaded_count
     
     def _create_dataset(self):
         """
@@ -149,7 +177,7 @@ class EnsembleModelTrainer:
             test_size (float, optional): Frakcja danych testowych. Jeśli None, używana jest wartość z konfiguracji.
             
         Zwraca:
-            dict: Zoptymalizowane wagi dla każdego typu cechy
+            tuple: (best_val_accuracy, best_weights)
         """
         # Parametry z konfiguracji lub podane
         n_trials = n_trials if n_trials is not None else OPTUNA_TRIALS
@@ -259,13 +287,9 @@ class EnsembleModelTrainer:
             
             # Proces optymalizacji
             study.optimize(objective, n_trials=n_trials, timeout=timeout)
-            
-            # Pobieranie najlepszych parametrów
-            best_weights = {ft: study.best_params[f"weight_{ft}"] for ft in self.feature_types}
-            
-            # Normalizacja wag, aby suma wynosiła 1
-            total = sum(best_weights.values())
-            best_weights = {ft: weight / total for ft, weight in best_weights.items()}
+            best_weights = study.best_params
+            self.ensemble_model = WeightedEnsembleModel(self.base_models, best_weights)
+            self.ensemble_model.save(os.path.join(self.output_dir, "models", "best_ensemble_model.pt"), class_names=self.class_names, version="1.0")
             
             # Logowanie najlepszych parametrów i metryk
             for ft, weight in best_weights.items():
@@ -295,7 +319,27 @@ class EnsembleModelTrainer:
             mlflow.log_artifact(importance_path)
             plt.close()
             
-        return best_weights
+            # Zapis modelu - zgodnie z PyTorch 2.x
+            save_path = os.path.join(self.output_dir, "models", "best_ensemble_model.pt")
+            self.ensemble_model.save(save_path, class_names=self.class_names, version="1.0")
+            
+            # Zapisz również informacje o optymalizacji
+            optim_results = {
+                "best_score": float(study.best_value),
+                "best_weights": {k: float(v) for k, v in best_weights.items()},
+                "all_trials": [
+                    {
+                        "params": {k: float(v) for k, v in t.params.items()}, 
+                        "value": float(t.value) if t.value is not None else None
+                    }
+                    for t in study.trials
+                ]
+            }
+            
+            with open(os.path.join(self.output_dir, "optimization_results.json"), "w") as f:
+                json.dump(optim_results, f, indent=2)
+            
+            return study.best_value, best_weights
     
     def train_and_evaluate(self, weights, test_size=None, batch_size=None):
         """
@@ -337,6 +381,13 @@ class EnsembleModelTrainer:
             # Proces tworzenia modelu ensemble z podanymi wagami
             ensemble_model = WeightedEnsembleModel(self.base_models, weights).to(self.device)
             
+            # Tymczasowy zapis modelu do testów
+            test_save_dir = os.path.join(".", "test_models")
+            os.makedirs(test_save_dir, exist_ok=True)
+            test_save_path = os.path.join(test_save_dir, "temp_ensemble_model_test.pt")
+            ensemble_model.save(test_save_path, class_names=self.class_names, version="test")
+            print(f"Tymczasowy model zapisany do: {test_save_path}")
+
             # Proces tworzenia dataloadera testowego
             test_dataset = Subset(self.dataset, test_indices)
             test_loader = DataLoader(
@@ -389,7 +440,7 @@ class EnsembleModelTrainer:
             # Proces zapisywania modelu
             model_dir = os.path.join(self.output_dir, "models")
             model_path = os.path.join(model_dir, "ensemble_model.pt")
-            torch.save(ensemble_model.state_dict(), model_path)
+            ensemble_model.save(model_path, class_names=self.class_names, version="1.0")
             mlflow.log_artifact(model_path)
             
             # Proces zapisywania wag
@@ -397,6 +448,27 @@ class EnsembleModelTrainer:
             with open(weights_path, "w") as f:
                 yaml.dump(weights, f)
             mlflow.log_artifact(weights_path)
+            
+            # Po zakończeniu treningu i ewaluacji
+            results = {
+                "test_accuracy": float(test_results['accuracy']),
+                "test_loss": float(test_results.get('loss', 0.0)),
+                "confusion_matrix": test_results['cm'].tolist(),
+                "classification_report": {}
+            }
+            
+            # Konwersja raportu klasyfikacji na format JSON
+            if 'report' in test_results:
+                for class_name, metrics in test_results['report'].items():
+                    if isinstance(metrics, dict):
+                        results["classification_report"][class_name] = {
+                            k: float(v) if isinstance(v, (int, float, np.number)) else v
+                            for k, v in metrics.items()
+                        }
+            
+            # Zapisz również wyniki ewaluacji
+            with open(os.path.join(self.output_dir, "evaluation_results.json"), "w") as f:
+                json.dump(results, f, indent=2)
         
         return ensemble_model, test_results
     
@@ -458,29 +530,3 @@ class EnsembleModelTrainer:
         error_df.to_csv(error_path, index=False)
         
         return error_df
-    
-    def save_full_model(self, model, path=None):
-        """Zapis pełnego modelu, nie tylko stanu parametrów"""
-        if path is None:
-            path = os.path.join(self.output_dir, "models", "full_ensemble_model.pt")
-            
-        torch.save({
-            'model_state_dict': model.state_dict(),
-            'feature_types': model.feature_types,
-            'weights': model.get_weights(),
-            'temperature': model.temperature.item(),
-            'class_names': self.class_names
-        }, path)
-        return path
-        
-    @staticmethod
-    def load_full_model(path, base_models):
-        """Ładowanie pełnego modelu z pliku"""
-        checkpoint = torch.load(path)
-        model = WeightedEnsembleModel(
-            base_models, 
-            weights=checkpoint['weights'], 
-            temperature=checkpoint['temperature']
-        )
-        model.load_state_dict(checkpoint['model_state_dict'])
-        return model, checkpoint['class_names']

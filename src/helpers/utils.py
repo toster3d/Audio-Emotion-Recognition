@@ -10,6 +10,26 @@ from sklearn.model_selection import StratifiedKFold
 
 from config import DEVICE, CLASS_NAMES, SEED, CV_FOLDS
 
+# Fix for PyTorch 2.6+ compatibility
+# Add safe globals for numpy functions used in model serialization
+try:
+    # For PyTorch 2.6+
+    import torch.serialization
+    # Add numpy functions to safe globals
+    torch.serialization.add_safe_globals([
+        np.core.multiarray._reconstruct,
+        np.ndarray.__reduce__,
+        np.ndarray.__setstate__,
+        np.dtype.__reduce__,
+        np.dtype.__setstate__,
+        np._pickle.dump,
+        np._pickle.load,
+        np.array
+    ])
+except (AttributeError, ImportError, ModuleNotFoundError):
+    # Older versions of PyTorch don't have this feature - ignore
+    pass
+
 def load_pretrained_model(model_path, model_class, num_classes=6, device=None):
     """
     Załadunek wstępnie wytrenowanego modelu.
@@ -29,18 +49,41 @@ def load_pretrained_model(model_path, model_class, num_classes=6, device=None):
         
     model = model_class(num_classes=num_classes)
     
-    try:
-        state_dict = torch.load(model_path, map_location=device)
-        # Obsługa modeli opakowanych w DataParallel
-        if list(state_dict.keys())[0].startswith('module.'):
-            state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
-        
-        model.load_state_dict(state_dict)
-        model.eval()  # Ustawienie trybu ewaluacji
-        return model
-    except Exception as e:
-        print(f"Błąd podczas ładowania modelu z {model_path}: {e}")
-        return None
+    # Próba ładowania modelu z obsługą różnych wersji PyTorch
+    for loading_strategy in [
+        lambda: torch.load(model_path, map_location=device),                   # Strategia 1: Standardowe ładowanie
+        lambda: torch.load(model_path, map_location=device, weights_only=False) # Strategia 2: Ładowanie z weights_only=False
+    ]:
+        try:
+            checkpoint = loading_strategy()
+            
+            # Sprawdzenie, czy załadowany obiekt to stan modelu czy pełny checkpoint
+            if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
+                state_dict = checkpoint["state_dict"]
+            else:
+                state_dict = checkpoint
+                
+            # Obsługa modeli opakowanych w DataParallel
+            if list(state_dict.keys())[0].startswith('module.'):
+                state_dict = {k.replace('module.', ''): v for k, v in state_dict.items()}
+            
+            # Próba ładowania stanu modelu
+            try:
+                model.load_state_dict(state_dict)
+                model.eval()  # Ustawienie trybu ewaluacji
+                print(f"Model załadowany pomyślnie z {model_path}")
+                return model
+            except Exception as load_state_error:
+                print(f"Błąd podczas load_state_dict: {load_state_error}")
+                continue  # Próba kolejnej strategii ładowania
+                
+        except Exception as e:
+            print(f"Próba ładowania modelu z {model_path} nie powiodła się: {e}")
+            continue  # Próba kolejnej strategii ładowania
+            
+    # Jeśli wszystkie próby zawiodły
+    print(f"Nie udało się załadować modelu z {model_path} używając żadnej metody")
+    return None
 
 def load_features(feature_file):
     """
@@ -175,6 +218,7 @@ def calculate_metrics(true_labels, predictions, probabilities=None, class_names=
         'precision': precision,
         'recall': recall,
         'f1': f1,
+        'loss': 0.0,  # Dodajemy domyślną wartość straty
         'report': report,
         'cm': cm,
         'preds': predictions,

@@ -341,7 +341,7 @@ class AudioAugmentation:
         return result
 
 
-# Zmodyfikowana klasa DataSet z obsługą różnych strategii augmentacji
+# Obsługa różnych strategii augmentacji
 class AugmentedAudioDataset(torch.utils.data.Dataset):
     def __init__(self, features, labels, feature_type=None, transform=None, augment=False):
         self.features = features

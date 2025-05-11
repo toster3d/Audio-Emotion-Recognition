@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import json
 
 class WeightedEnsembleModel(nn.Module):
     """
@@ -102,41 +103,87 @@ class WeightedEnsembleModel(nn.Module):
         """Zastosowanie regulacji L1 w celu promowania rzadkich wag"""
         return self.regularization_strength * torch.norm(self.weights, p=1)
         
-    def save(self, path):
+    def save(self, path, class_names=None, version="1.0"):
         """
         Zapis modelu wraz z wagami i parametrami
-        
-        Argumenty:
-            path (str): Ścieżka do zapisu modelu
         """
+        # Przygotuj stan do zapisu
         state = {
             'model_state_dict': self.state_dict(),
-            'feature_types': self.feature_types,
-            'normalized_weights': self.normalized_weights,
-            'temperature': self.temperature.item(),
-            'regularization_strength': self.regularization_strength
+            'feature_types': list(self.feature_types),
+            'normalized_weights': {k: float(v) for k, v in self.normalized_weights.items()},
+            'temperature': float(self.temperature.item()),
+            'regularization_strength': float(self.regularization_strength),
+            'class_names': [str(name) for name in class_names] if class_names is not None else None,
+            'model_version': version,
+            'pytorch_version': torch.__version__
         }
+        
+        # Zapisz z obsługą różnych wersji PyTorch
         torch.save(state, path)
+        
+        # Przygotowanie metadanych w formacie JSON (tylko serializowalne typy)
+        json_metadata = {
+            'feature_types': list(self.feature_types),
+            'normalized_weights': {k: float(v) for k, v in self.normalized_weights.items()},
+            'temperature': float(self.temperature.item()),
+            'regularization_strength': float(self.regularization_strength),
+            'class_names': [str(name) for name in class_names] if class_names is not None else None,
+            'model_version': version,
+            'pytorch_version': torch.__version__
+        }
+        
+        # Zapisz również metadane oddzielnie dla łatwiejszego dostępu
+        metadata_path = path.replace('.pt', '_metadata.json')
+        with open(metadata_path, 'w') as f:
+            json.dump(json_metadata, f, indent=2)
+    
         
     @classmethod
     def load(cls, path, models_dict):
         """
-        Ładowanie modelu z pliku
-        
-        Argumenty:
-            path (str): Ścieżka do pliku modelu
-            models_dict (dict): Słownik modeli w formacie {typ_cechy: model}
-            
-        Zwraca:
-            WeightedEnsembleModel: Załadowany model
+        Ładowanie modelu z pliku z obsługą różnych wersji PyTorch
         """
-        state = torch.load(path)
-        # Tworzenie modelu z tymi samymi parametrami
+        # Dodanie bezpiecznych globali dla PyTorch 2.6+
+        try:
+            import torch.serialization
+            import numpy as np
+            safe_globals = [
+                torch.torch_version.TorchVersion,
+                np.core.multiarray._reconstruct,
+                np.ndarray,
+                np.dtype
+            ]
+            for safe_global in safe_globals:
+                try:
+                    torch.serialization.add_safe_globals([safe_global])
+                except Exception:
+                    pass
+        except Exception:
+            pass
+        
+        try:
+            # Próba z weights_only=True (dla PyTorch 2.6+)
+            state = torch.load(path, weights_only=True)
+        except Exception:
+            try:
+                # Jeśli nie działa, próba z weights_only=False (mniej bezpieczna)
+                state = torch.load(path, weights_only=False)
+            except Exception as e:
+                # Jeśli ładowanie dalej nie działa, wyświetl bardziej szczegółowy błąd
+                raise RuntimeError(f"Nie można załadować modelu: {str(e)}")
+        
         model = cls(
             models_dict=models_dict,
-            temperature=state['temperature'],
-            regularization_strength=state['regularization_strength']
+            temperature=state.get('temperature', 1.0),
+            regularization_strength=state.get('regularization_strength', 0.01)
         )
-        # Ładowanie stanu
-        model.load_state_dict(state['model_state_dict'])
-        return model
+        
+        # Ładuj stan modelu bezpiecznie
+        if 'model_state_dict' in state:
+            model.load_state_dict(state['model_state_dict'])
+        else:
+            model.load_state_dict(state)  # Próba bezpośredniego ładowania, jeśli brak klucza
+        
+        model.eval()
+        return model, state.get('class_names')
