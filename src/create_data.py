@@ -18,6 +18,3 @@ def download_and_save_dataset():
     print(f"Zbiór danych zapisany w {DATASET_PATH}")
     
     return dataset
-
-if __name__ == "__main__":
-    download_and_save_dataset()

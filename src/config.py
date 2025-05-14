@@ -43,6 +43,13 @@ OPTUNA_TIMEOUT = 3600  # 1 godzina
 # Ogólne ustawienia
 MAX_LENGTH = 3.0
 
+# Ustawienia ekstrakcji cech
+HOP_LENGTH = 512
+N_FFT = 2048
+N_MELS = 128
+N_MFCC = 40
+N_CHROMA = 12
+
 # Utwórz katalogi, jeśli nie istnieją
 os.makedirs(MODEL_DIR, exist_ok=True)
 os.makedirs(ENSEMBLE_OUTPUT_DIR, exist_ok=True)

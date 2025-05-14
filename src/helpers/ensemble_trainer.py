@@ -380,13 +380,6 @@ class EnsembleModelTrainer:
             
             # Proces tworzenia modelu ensemble z podanymi wagami
             ensemble_model = WeightedEnsembleModel(self.base_models, weights).to(self.device)
-            
-            # Tymczasowy zapis modelu do testów
-            test_save_dir = os.path.join(".", "test_models")
-            os.makedirs(test_save_dir, exist_ok=True)
-            test_save_path = os.path.join(test_save_dir, "temp_ensemble_model_test.pt")
-            ensemble_model.save(test_save_path, class_names=self.class_names, version="test")
-            print(f"Tymczasowy model zapisany do: {test_save_path}")
 
             # Proces tworzenia dataloadera testowego
             test_dataset = Subset(self.dataset, test_indices)

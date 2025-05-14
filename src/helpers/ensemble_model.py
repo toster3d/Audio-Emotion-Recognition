@@ -77,9 +77,11 @@ class WeightedEnsembleModel(nn.Module):
         normalized_weights = F.softmax(available_weights, dim=0)
         
         # Zastosowanie wag do wyjścia każdego modelu
+        # Poprawka: Unikanie konwersji tensora wag na listę, zamiast tego używamy indeksowania
         weighted_sum = torch.zeros_like(outputs[0])
-        for output, weight in zip(outputs, normalized_weights):
-            weighted_sum += output * weight
+        for i, output in enumerate(outputs):
+            weight = normalized_weights[i]  # Bezpośrednie indeksowanie tensora wag
+            weighted_sum = weighted_sum + output * weight  # Używamy dodawania zamiast += dla kompatybilności z tracerem
             
         return weighted_sum
     
