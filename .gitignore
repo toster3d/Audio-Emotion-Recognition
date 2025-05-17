@@ -23,7 +23,6 @@ jupyter_notebook_config.py
 *.parquet
 *.h5
 *.hdf5
-*.pkl
 *.pickle
 *.joblib
 *.model
@@ -66,22 +65,14 @@ build/
 htmlcov/
 
 # Wagi modeli
-*.pth
-*.pt
 *.pth.tar
 *.pth.tar.gz
 
 # Foldery z wynikami eksperymentów
-processed_features/
 data/
 src/data/
-src/processed_features/
-src/ensemble_outputs/
-src/feature_comparison_results/
 
-# Duże pliki graficzne
-*.png
-!README_assets/*.png  # Dozwolone obrazki do dokumentacji w README
+
 
 # Duże pliki danych
 src/data/nemo_dataset/train/data-*.arrow
