@@ -1,10 +1,9 @@
 import torch.nn as nn
-import torch.nn.functional as F
 import torchvision.models as models
 
 # Klasa definiująca model AudioResNet oparty na architekturze ResNet
 class AudioResNet(nn.Module):
-    def __init__(self, num_classes=6, dropout_rate=0.5):
+    def __init__(self, num_classes: int = 6, dropout_rate: float = 0.5) -> None:
         super(AudioResNet, self).__init__()
         self.resnet = models.resnet18(weights=None)
         self.resnet.conv1 = nn.Conv2d(1, 64, kernel_size=7, stride=2, padding=3, bias=False)
