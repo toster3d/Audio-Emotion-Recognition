@@ -1,0 +1,18 @@
+feature_type: delta_mfcc
+
+HYPERPARAMETERS:
+  batch_size: 32
+  initial_lr: 0.001
+  weight_decay: 1e-05
+  dropout_rate: 0.5
+  early_stopping_patience: 7
+  max_epochs: 50
+  actual_epochs: 16
+
+PERFORMANCE:
+  test_accuracy: 62.31884057971015
+  test_loss: 1.2627697799451136
+  val_accuracy: 64.15620641562064
+  val_loss: 1.5768234315125838
+  training_time: 343.07156109809875
+

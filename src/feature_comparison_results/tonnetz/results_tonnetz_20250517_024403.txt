@@ -1,0 +1,18 @@
+feature_type: tonnetz
+
+HYPERPARAMETERS:
+  batch_size: 32
+  initial_lr: 0.001
+  weight_decay: 1e-05
+  dropout_rate: 0.5
+  early_stopping_patience: 7
+  max_epochs: 50
+  actual_epochs: 13
+
+PERFORMANCE:
+  test_accuracy: 37.458193979933114
+  test_loss: 1.6643582130300587
+  val_accuracy: 37.37796373779637
+  val_loss: 3.244876643885737
+  training_time: 297.1454601287842
+

@@ -1,0 +1,18 @@
+feature_type: delta_tempogram
+
+HYPERPARAMETERS:
+  batch_size: 32
+  initial_lr: 0.001
+  weight_decay: 1e-05
+  dropout_rate: 0.5
+  early_stopping_patience: 7
+  max_epochs: 50
+  actual_epochs: 25
+
+PERFORMANCE:
+  test_accuracy: 24.414715719063544
+  test_loss: 1.759406410414597
+  val_accuracy: 22.733612273361228
+  val_loss: 1.7901601584061333
+  training_time: 3730.5507712364197
+

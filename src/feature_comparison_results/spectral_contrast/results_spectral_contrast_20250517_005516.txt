@@ -1,0 +1,18 @@
+feature_type: spectral_contrast
+
+HYPERPARAMETERS:
+  batch_size: 32
+  initial_lr: 0.001
+  weight_decay: 1e-05
+  dropout_rate: 0.5
+  early_stopping_patience: 7
+  max_epochs: 50
+  actual_epochs: 11
+
+PERFORMANCE:
+  test_accuracy: 42.58639910813824
+  test_loss: 1.4034716445824196
+  val_accuracy: 49.232914923291496
+  val_loss: 2.0990753121998
+  training_time: 106.0984115600586
+

@@ -1,0 +1,18 @@
+feature_type: zcr
+
+HYPERPARAMETERS:
+  batch_size: 32
+  initial_lr: 0.001
+  weight_decay: 1e-05
+  dropout_rate: 0.5
+  early_stopping_patience: 7
+  max_epochs: 50
+  actual_epochs: 14
+
+PERFORMANCE:
+  test_accuracy: 26.08695652173913
+  test_loss: 1.6852354304543857
+  val_accuracy: 24.267782426778243
+  val_loss: 1.8551142785860144
+  training_time: 702.8206849098206
+
