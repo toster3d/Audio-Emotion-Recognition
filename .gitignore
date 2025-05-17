@@ -23,6 +23,7 @@ jupyter_notebook_config.py
 *.parquet
 *.h5
 *.hdf5
+*.pkl
 *.pickle
 *.joblib
 *.model
@@ -39,14 +40,14 @@ wandb/
 lightning_logs/
 runs/
 results/
-ensemble_outputs/
-feature_comparison_results/
-model_outputs/
-spectrogram_model_results/
-*/ensemble_outputs/
-*/feature_comparison_results/
-*/model_outputs/
-*/spectrogram_model_results/
+# ensemble_outputs/
+# feature_comparison_results/
+# model_outputs/
+# spectrogram_model_results/
+# */ensemble_outputs/
+# */feature_comparison_results/
+# */model_outputs/
+# */spectrogram_model_results/
 
 # IDE
 .idea/
