@@ -30,6 +30,7 @@ jupyter_notebook_config.py
 *.weights
 *.bin
 *.arrow
+*.onnx.backup
 
 # Logi i raporty
 logs/
