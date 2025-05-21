@@ -1,0 +1,18 @@
+feature_type: harmonic_percussive
+
+HYPERPARAMETERS:
+  batch_size: 32
+  initial_lr: 0.001
+  weight_decay: 1e-05
+  dropout_rate: 0.5
+  early_stopping_patience: 7
+  max_epochs: 50
+  actual_epochs: 30
+
+PERFORMANCE:
+  test_accuracy: 93.86845039018952
+  test_loss: 0.21948538209710086
+  val_accuracy: 92.18967921896792
+  val_loss: 0.2809299340714579
+  training_time: 73.74629020690918
+
