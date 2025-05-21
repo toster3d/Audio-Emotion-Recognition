@@ -13,6 +13,7 @@ import seaborn as sns
 import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Subset
+from typing import Dict, List, Optional
 
 from config import (
     DEVICE, CLASS_NAMES, BATCH_SIZE, SEED, 
@@ -32,7 +33,7 @@ class EnsembleModelTrainer:
         output_dir (str): Katalog wyjściowy do zapisywania artefaktów
     """
     
-    def __init__(self, model_paths, feature_files, output_dir, model_class, class_names=None, device=None):
+    def __init__(self, model_paths: Dict[str, str], feature_files: Dict[str, str], output_dir: str, model_class, class_names: Optional[List[str]] = None, device=None):
         self.model_paths = model_paths
         self.feature_files = feature_files
         self.output_dir = output_dir
@@ -44,9 +45,9 @@ class EnsembleModelTrainer:
         self.feature_types = list(model_paths.keys())
         
         # Stan wewnętrzny
-        self.base_models = {}
-        self.dataset = None
-        self.ensemble_model = None
+        self.base_models: Dict[str, torch.nn.Module] = {}
+        self.dataset: Optional[EnsembleDatasetIndexed] = None
+        self.ensemble_model: Optional[WeightedEnsembleModel] = None
         
         # Proces ładowania modeli bazowych
         self._load_base_models()
@@ -227,12 +228,12 @@ class EnsembleModelTrainer:
         )
         
         # Definicja funkcji obiektywnej
-        def objective(trial):
+        def objective(trial: optuna.Trial) -> float:
             with mlflow.start_run(run_name=f"trial_{trial.number}", nested=True):
                 # Generowanie wag przy użyciu interfejsu sugestii Optuna
                 weights = {}
                 for ft in self.feature_types:
-                    weights[ft] = trial.suggest_float(f"weight_{ft}", 0.0, 1.0)
+                    weights[ft] = trial.suggest_float(ft, 0.0, 1.0)
                 
                 # Normalizacja wag, aby suma wynosiła 1
                 total = sum(weights.values())
@@ -241,7 +242,7 @@ class EnsembleModelTrainer:
                 # Logowanie parametrów do MLflow
                 mlflow.log_param("trial_number", trial.number)
                 for ft, weight in normalized_weights.items():
-                    mlflow.log_param(f"weight_{ft}", weight)
+                    mlflow.log_param(f"{ft}", weight)
                 
                 # Ocena modeli ensemble w różnych foldach walidacyjnych
                 val_accuracies = []
@@ -270,10 +271,11 @@ class EnsembleModelTrainer:
                     del ensemble, train_loader, val_loader
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
-                    self.dataset.clear_cache()
+                    if self.dataset is not None:
+                        self.dataset.clear_cache()
                 
                 # Obliczanie i logowanie średnich metryk
-                mean_accuracy = np.mean(val_accuracies)
+                mean_accuracy = float(np.mean(val_accuracies))
                 mlflow.log_metric("mean_val_accuracy", mean_accuracy)
                 
                 return mean_accuracy
@@ -287,14 +289,12 @@ class EnsembleModelTrainer:
             
             # Proces optymalizacji
             study.optimize(objective, n_trials=n_trials, timeout=timeout)
-            best_weights = study.best_params
-            self.ensemble_model = WeightedEnsembleModel(self.base_models, best_weights)
-            self.ensemble_model.save(os.path.join(self.output_dir, "models", "best_ensemble_model.pt"), class_names=self.class_names, version="1.0")
+            best_weights = {k.replace("weight_", ""): v for k, v in study.best_params.items()}
             
             # Logowanie najlepszych parametrów i metryk
             for ft, weight in best_weights.items():
                 mlflow.log_param(f"best_weight_{ft}", weight)
-            mlflow.log_metric("best_val_accuracy", study.best_value)
+            mlflow.log_metric("best_val_accuracy", float(study.best_value))
             
             # Proces zapisywania wykresów optymalizacji
             fig_dir = os.path.join(self.output_dir, "optimization_plots")
@@ -302,7 +302,6 @@ class EnsembleModelTrainer:
             # Wykres historii optymalizacji
             plt.figure(figsize=(10, 6))
             optuna.visualization.matplotlib.plot_optimization_history(study)
-            plt.title('Historia optymalizacji Optuna')
             plt.tight_layout()
             history_path = os.path.join(fig_dir, "optimization_history.png")
             plt.savefig(history_path)
@@ -312,16 +311,11 @@ class EnsembleModelTrainer:
             # Proces generowania wykresu ważności
             plt.figure(figsize=(10, 6))
             optuna.visualization.matplotlib.plot_param_importances(study)
-            plt.title('Ważności parametrów')
             plt.tight_layout()
             importance_path = os.path.join(fig_dir, "parameter_importance.png")
             plt.savefig(importance_path)
             mlflow.log_artifact(importance_path)
             plt.close()
-            
-            # Zapis modelu - zgodnie z PyTorch 2.x
-            save_path = os.path.join(self.output_dir, "models", "best_ensemble_model.pt")
-            self.ensemble_model.save(save_path, class_names=self.class_names, version="1.0")
             
             # Zapisz również informacje o optymalizacji
             optim_results = {
@@ -341,7 +335,7 @@ class EnsembleModelTrainer:
             
             return study.best_value, best_weights
     
-    def train_and_evaluate(self, weights, test_size=None, batch_size=None):
+    def train_and_evaluate(self, weights: Dict[str, float], test_size: Optional[float] = None, batch_size: Optional[int] = None):
         """
         Proces trenowania i oceny modelu ensemble z podanymi wagami.
         
@@ -382,6 +376,7 @@ class EnsembleModelTrainer:
             ensemble_model = WeightedEnsembleModel(self.base_models, weights).to(self.device)
 
             # Proces tworzenia dataloadera testowego
+            assert self.dataset is not None, "Dataset has not been created."
             test_dataset = Subset(self.dataset, test_indices)
             test_loader = DataLoader(
                 test_dataset,
@@ -465,7 +460,7 @@ class EnsembleModelTrainer:
         
         return ensemble_model, test_results
     
-    def analyze_errors(self, model, test_size=None, batch_size=None):
+    def analyze_errors(self, model: WeightedEnsembleModel, test_size: Optional[float] = None, batch_size: Optional[int] = None):
         """Analiza przypadków, które model sklasyfikował niepoprawnie"""
         # Parametry z konfiguracji lub podane
         test_size = test_size if test_size is not None else TEST_SPLIT
@@ -482,6 +477,7 @@ class EnsembleModelTrainer:
         )
         
         # Proces ewaluacji modelu i identyfikacji błędów
+        assert self.dataset is not None, "Dataset has not been created."
         test_dataset = Subset(self.dataset, test_indices)
         test_loader = DataLoader(
             test_dataset,

@@ -1,0 +1,90 @@
+{
+    "model_name": "audio_emotion_ensemble",
+    "original_pytorch_model_class": "WeightedEnsembleModel",
+    "feature_types": [
+        "melspectrogram",
+        "mfcc",
+        "chroma"
+    ],
+    "class_names": [
+        "anger",
+        "fear",
+        "happiness",
+        "neutral",
+        "sadness",
+        "surprised"
+    ],
+    "input_shapes_onnx": {
+        "mel_input": [
+            1,
+            1,
+            128,
+            -1
+        ],
+        "mfcc_input": [
+            1,
+            1,
+            40,
+            -1
+        ],
+        "chroma_input": [
+            1,
+            1,
+            12,
+            -1
+        ]
+    },
+    "pytorch_version": "2.7.0+cpu",
+    "onnx_opset_version": 17,
+    "onnxruntime_version": "1.19.2",
+    "export_parameters_used": {
+        "quantize_model": true,
+        "quantization_type": "static",
+        "activation_type": "int8",
+        "weight_type": "int8",
+        "quant_format": "qdq",
+        "per_channel": true,
+        "reduce_range": false,
+        "use_cuda": false,
+        "opset_version": 17
+    },
+    "paths": {
+        "original_onnx": "ensemble_model.onnx",
+        "optimized_onnx": "ensemble_model_optimized.onnx",
+        "quantized_onnx": null,
+        "final_verified_model": "ensemble_model_optimized.onnx"
+    },
+    "sizes_mb": {
+        "original": 127.85421371459961,
+        "optimized": 127.85421562194824
+    },
+    "optimization_details": {
+        "success": true,
+        "method": "onnx_optimizer",
+        "reduction_percent": -1.4918152269061125e-06,
+        "warning": null,
+        "error": null
+    },
+    "quantization_details": {
+        "performed": true,
+        "type": "static",
+        "success": false,
+        "source_model_for_quantization": "optimized",
+        "reduction_vs_source_percent": null,
+        "params_used": {
+            "activation_type": "int8",
+            "weight_type": "int8",
+            "quant_format": "qdq",
+            "per_channel": true,
+            "reduce_range": false
+        },
+        "error": "Kwantyzacja static nie powiod\u0142a si\u0119: Wszystkie pr\u00f3by kwantyzacji statycznej nieudane. Ostatni b\u0142\u0105d: No data is collected."
+    },
+    "verification_details": {
+        "model_verified": "ensemble_model_optimized.onnx",
+        "success": true,
+        "max_difference_vs_pytorch": 2.9802322387695312e-08,
+        "warning": null,
+        "error": null
+    }
+}

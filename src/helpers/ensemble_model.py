@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import json
+import numpy as np
 
 class WeightedEnsembleModel(nn.Module):
     """
@@ -145,47 +146,103 @@ class WeightedEnsembleModel(nn.Module):
     def load(cls, path, models_dict):
         """
         Ładowanie modelu z pliku z obsługą różnych wersji PyTorch
+        
+        Args:
+            path: Ścieżka do pliku modelu
+            models_dict: Słownik modeli bazowych
+            
+        Returns:
+            tuple: (załadowany_model, nazwy_klas)
         """
-        # Dodanie bezpiecznych globali dla PyTorch 2.6+
+        # Konfiguracja bezpiecznego ładowania dla PyTorch
         try:
+            # Dodaj bezpieczne typy danych dla PyTorch
             import torch.serialization
-            import numpy as np
-            safe_globals = [
-                torch.torch_version.TorchVersion,
-                np.core.multiarray._reconstruct,
-                np.ndarray,
-                np.dtype
-            ]
-            for safe_global in safe_globals:
-                try:
-                    torch.serialization.add_safe_globals([safe_global])
-                except Exception:
-                    pass
-        except Exception:
-            pass
-        
-        try:
-            # Próba z weights_only=True (dla PyTorch 2.6+)
-            state = torch.load(path, weights_only=True)
-        except Exception:
             try:
-                # Jeśli nie działa, próba z weights_only=False (mniej bezpieczna)
-                state = torch.load(path, weights_only=False)
+                from torch.serialization import safe_globals
+                safe_globals_exist = True
+            except ImportError:
+                safe_globals_exist = False
+
+            # Tylko jeśli safe_globals jest dostępne, dodaj dodatkowe globale
+            if safe_globals_exist:
+                try:
+                    from torch import torch_version
+                    safe_types = [
+                        torch_version.TorchVersion,
+                        np.ndarray,
+                        np.dtype,
+                    ]
+                    
+                    for safe_type in safe_types:
+                        torch.serialization.add_safe_globals([safe_type])
+                except Exception as e:
+                    print(f"Ostrzeżenie: Nie można dodać bezpiecznych globali: {e}")
+        except Exception as e:
+            print(f"Ostrzeżenie: Problem z konfiguracją bezpiecznego ładowania: {e}")
+        
+        # Stopniowo zwiększaj poziom bezpieczeństwa przy ładowaniu
+        load_exceptions = []
+        
+        # Próba 1: Użyj weights_only=True (zalecane dla PyTorch 2.6+)
+        try:
+            state = torch.load(path, weights_only=True, map_location='cpu')
+            print("Załadowano model z weights_only=True")
+        except Exception as e:
+            load_exceptions.append(f"Próba z weights_only=True nie powiodła się: {e}")
+            
+            # Próba 2: Użyj pickle_module=None
+            try:
+                state = torch.load(path, map_location='cpu', pickle_module=None)
+                print("Załadowano model z pickle_module=None")
             except Exception as e:
-                # Jeśli ładowanie dalej nie działa, wyświetl bardziej szczegółowy błąd
-                raise RuntimeError(f"Nie można załadować modelu: {str(e)}")
+                load_exceptions.append(f"Próba z pickle_module=None nie powiodła się: {e}")
+                
+                # Próba 3: Standardowe ładowanie (mniej bezpieczne)
+                try:
+                    state = torch.load(path, map_location='cpu')
+                    print("Załadowano model standardową metodą")
+                except Exception as e:
+                    error_msg = f"Wszystkie metody ładowania nie powiodły się:\n" + "\n".join(load_exceptions) + f"\nOstatni błąd: {e}"
+                    raise RuntimeError(error_msg)
         
-        model = cls(
-            models_dict=models_dict,
-            temperature=state.get('temperature', 1.0),
-            regularization_strength=state.get('regularization_strength', 0.01)
-        )
-        
-        # Ładuj stan modelu bezpiecznie
-        if 'model_state_dict' in state:
-            model.load_state_dict(state['model_state_dict'])
-        else:
-            model.load_state_dict(state)  # Próba bezpośredniego ładowania, jeśli brak klucza
-        
-        model.eval()
-        return model, state.get('class_names')
+        # Tworzenie modelu
+        try:
+            # Sprawdź, czy w stanie modelu są zapisane wagi
+            weights = None
+            if 'normalized_weights' in state:
+                weights = state['normalized_weights']
+            elif isinstance(state, dict) and 'model_state_dict' in state and 'weights' in state:
+                weights = state['weights']
+            
+            # Parametry temperatury i regularyzacji
+            temperature = state.get('temperature', 1.0) if isinstance(state, dict) else 1.0
+            reg_strength = state.get('regularization_strength', 0.01) if isinstance(state, dict) else 0.01
+            
+            # Tworzenie modelu ensemble
+            model = cls(
+                models_dict=models_dict,
+                weights=weights,
+                temperature=temperature,
+                regularization_strength=reg_strength
+            )
+            
+            # Wczytaj stan modelu
+            if isinstance(state, dict) and 'model_state_dict' in state:
+                model.load_state_dict(state['model_state_dict'])
+            else:
+                try:
+                    model.load_state_dict(state)
+                except:
+                    print("Ostrzeżenie: Nie udało się bezpośrednio załadować stanu modelu")
+            
+            # Pobierz nazwy klas, jeśli są dostępne
+            class_names = None
+            if isinstance(state, dict) and 'class_names' in state:
+                class_names = state['class_names']
+            
+            model.eval()  # Przełącz model w tryb ewaluacji
+            return model, class_names
+            
+        except Exception as e:
+            raise RuntimeError(f"Błąd podczas inicjalizacji modelu z wczytanych danych: {e}")

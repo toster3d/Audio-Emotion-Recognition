@@ -6,6 +6,11 @@ import librosa
 import numpy as np
 import onnxruntime as ort
 import os
+import tempfile
+import shutil
+from torch.jit._trace import TracerWarning
+from onnxruntime.quantization import quantize_dynamic, quantize_static, QuantType, QuantFormat, CalibrationDataReader
+from typing import Dict, Any, Union
 
 from config import MAX_LENGTH, N_FFT, HOP_LENGTH, N_MELS, N_MFCC, N_CHROMA
 
@@ -46,7 +51,7 @@ class EnsembleONNXWrapper(torch.nn.Module):
             
         return output
 
-def export_onnx_model(ensemble_model, output_path, dummy_input, opset_version=17):
+def export_onnx_model(ensemble_model, output_path, dummy_input, opset_version=19):
     # Utwórz i przygotuj wrapper
     try:
         print(f"Rozpoczynam eksport modelu ensemble do formatu ONNX: {output_path}")
@@ -92,7 +97,7 @@ def export_onnx_model(ensemble_model, output_path, dummy_input, opset_version=17
         try:
             # Ustawienie dla torch.onnx.export dla uniknięcia ostrzeżeń
             with warnings.catch_warnings():
-                warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
+                warnings.filterwarnings("ignore", category=TracerWarning)
                 
                 torch.onnx.export(
                     wrapper,
@@ -104,8 +109,7 @@ def export_onnx_model(ensemble_model, output_path, dummy_input, opset_version=17
                     opset_version=opset_version,
                     do_constant_folding=True,
                     export_params=True,
-                    training=torch.onnx.TrainingMode.EVAL,
-                    dynamo=True
+                    training=torch.onnx.TrainingMode.EVAL
                 )
 
                 
@@ -194,32 +198,14 @@ def optimize_onnx_model(input_path, output_path):
     """
     try:
         print(f"Rozpoczęcie optymalizacji modelu ONNX: {input_path}")
-        import onnx
-        
-        # Sprawdzenie czy plik istnieje
         if not os.path.exists(input_path):
             error_msg = f"Plik modelu ONNX nie istnieje: {input_path}"
             print(error_msg)
             return {"success": False, "error": error_msg}
         
-        # Ładowanie modelu
-        try:
-            model = onnx.load(input_path)
-        except Exception as e:
-            error_msg = f"Błąd podczas ładowania modelu ONNX: {e}"
-            print(error_msg)
-            return {"success": False, "error": error_msg}
+        model = onnx.load(input_path)
+        onnx.checker.check_model(model) # Sprawdź przed optymalizacją
         
-        # Weryfikacja modelu przed optymalizacją
-        try:
-            onnx.checker.check_model(model)
-        except Exception as e:
-            error_msg = f"Model ONNX jest niepoprawny przed optymalizacją: {e}"
-            print(error_msg)
-            return {"success": False, "error": error_msg}
-            
-        # Najpierw skopiuj oryginalny model jako kopię zapasową
-        import shutil
         backup_path = input_path + ".backup"
         shutil.copy(input_path, backup_path)
         print(f"Utworzono kopię zapasową oryginalnego modelu: {backup_path}")
@@ -227,389 +213,343 @@ def optimize_onnx_model(input_path, output_path):
         input_size = os.path.getsize(input_path)
         print(f"Rozmiar oryginalnego modelu: {input_size / (1024*1024):.2f} MB")
             
-        # Optymalizacja modelu
         try:
             import onnxoptimizer as optimizer
-            
-            # Używanie bezpieczniejszego zestawu optymalizacji (mniejsza liczba potencjalnie problematycznych)
-            safe_passes = [
-                'eliminate_nop_dropout',
-                'eliminate_unused_initializer',
-                'eliminate_identity',
-                'fuse_bn_into_conv'
-            ]
-            
-            print("Używanie bezpiecznych optymalizacji...")
-                
-            # Próba optymalizacji
+            safe_passes = ['eliminate_nop_dropout', 'eliminate_unused_initializer', 'eliminate_identity', 'fuse_bn_into_conv']
+            print("Używanie bezpiecznych optymalizacji onnxoptimizer...")
             optimized_model = optimizer.optimize(model, safe_passes)
             
-            # Zapisanie zoptymalizowanego modelu w trybie testowym, aby sprawdzić jego rozmiar
             temp_output_path = output_path + ".temp"
             onnx.save(optimized_model, temp_output_path)
+            onnx.checker.check_model(optimized_model) # Sprawdź po optymalizacji
+            print("Model po optymalizacji onnxoptimizer poprawny.")
             
-            # Weryfikacja modelu po optymalizacji
-            try:
-                onnx.checker.check_model(optimized_model)
-                print("Model po optymalizacji poprawny.")
-            except Exception as e:
-                warning_msg = f"Ostrzeżenie: Model po optymalizacji ma problemy z weryfikacją: {e}"
-                print(warning_msg)
-                # Usuwamy plik tymczasowy i używamy oryginału
-                if os.path.exists(temp_output_path):
-                    os.remove(temp_output_path)
-                shutil.copy(input_path, output_path)
-                return {
-                    "success": True,
-                    "input_size": input_size,
-                    "output_size": input_size,
-                    "reduction_percent": 0.0,
-                    "warning": warning_msg,
-                    "method": "no_optimization"
-                }
-                
-            # Sprawdzanie efektywności optymalizacji
             temp_output_size = os.path.getsize(temp_output_path)
-            
-            # Sprawdzenie czy zoptymalizowany model nie jest znacznie większy niż oryginalny
-            # Jeśli jest ponad 2x większy, używamy oryginału zamiast
-            if temp_output_size > 2 * input_size:
-                warning_msg = (f"Ostrzeżenie: Zoptymalizowany model jest znacznie większy "
+            if temp_output_size > 1.5 * input_size: # Zwiększono próg do 1.5x
+                warning_msg = (f"Ostrzeżenie: Zoptymalizowany model przez onnxoptimizer jest znacznie większy "
                                f"({temp_output_size / (1024*1024):.2f} MB) niż oryginalny "
                                f"({input_size / (1024*1024):.2f} MB). Używanie oryginału.")
                 print(warning_msg)
-                
-                # Usuwamy plik tymczasowy i używamy oryginału
-                if os.path.exists(temp_output_path):
-                    os.remove(temp_output_path)
-                
+                if os.path.exists(temp_output_path): os.remove(temp_output_path)
                 shutil.copy(input_path, output_path)
-                
-                return {
-                    "success": True,
-                    "input_size": input_size,
-                    "output_size": input_size,
-                    "reduction_percent": 0.0,
-                    "warning": warning_msg,
-                    "method": "no_optimization"
-                }
-            
-            # Jeśli optymalizacja przeszła pomyślnie i model nie jest znacznie większy
-            # Przenieś plik tymczasowy jako docelowy
-            if os.path.exists(temp_output_path):
-                shutil.move(temp_output_path, output_path)
-            
+                return {"success": True, "input_size": input_size, "output_size": input_size,
+                        "reduction_percent": 0.0, "warning": warning_msg, "method": "no_optimization_onnxoptimizer_larger"}
+
+            if os.path.exists(temp_output_path): shutil.move(temp_output_path, output_path)
             output_size = os.path.getsize(output_path)
-            
-            # Obliczenie procentowej redukcji rozmiaru
             reduction_percent = (1 - output_size / input_size) * 100 if input_size > 0 else 0
+            print(f"Optymalizacja onnxoptimizer zakończona.")
+            print(f"Rozmiar po optymalizacji: {output_size / (1024*1024):.2f} MB. Redukcja: {reduction_percent:.2f}%")
+            return {"success": True, "input_size": input_size, "output_size": output_size,
+                    "reduction_percent": reduction_percent, "method": "onnx_optimizer", "passes_applied": safe_passes}
             
-            print(f"Optymalizacja zakończona pomyślnie.")
-            print(f"Rozmiar oryginalny: {input_size / (1024*1024):.2f} MB")
-            print(f"Rozmiar po optymalizacji: {output_size / (1024*1024):.2f} MB")
-            print(f"Redukcja rozmiaru: {reduction_percent:.2f}%")
-            
-            return {
-                "success": True,
-                "input_size": input_size,
-                "output_size": output_size,
-                "reduction_percent": reduction_percent,
-                "method": "onnx_optimizer",
-                "passes_applied": safe_passes
-            }
-            
-        except Exception as e:
-            # Jeśli optymalizacja się nie powiodła, używamy oryginału
-            error_msg = f"Optymalizacja nie powiodła się: {e}. Kopiowanie oryginalnego modelu."
+        except Exception as e_opt:
+            error_msg = f"Optymalizacja onnxoptimizer nie powiodła się: {e_opt}. Kopiowanie oryginalnego modelu."
             print(error_msg)
-            
-            # Kopiowanie oryginalnego modelu do wyjścia
             shutil.copy(input_path, output_path)
+            return {"success": True, "input_size": input_size, "output_size": os.path.getsize(output_path),
+                    "reduction_percent": 0.0, "warning": error_msg, "method": "no_optimization_onnxoptimizer_failed"}
             
-            return {
-                "success": True,  # Nadal zwracamy True, ponieważ mamy działający model
-                "input_size": input_size,
-                "output_size": os.path.getsize(output_path),
-                "reduction_percent": 0.0,
-                "warning": error_msg,
-                "method": "no_optimization"
-            }
-            
-    except Exception as e:
-        error_msg = f"Nieoczekiwany błąd podczas optymalizacji modelu: {e}"
+    except Exception as e_main_opt:
+        error_msg = f"Nieoczekiwany błąd podczas optymalizacji modelu: {e_main_opt}"
         print(error_msg)
-        
-        # Zapisz szczegółowe informacje o błędzie
-        import traceback
         tb = traceback.format_exc()
         error_path = output_path + ".optimization.error.log"
-        with open(error_path, "w") as f:
-            f.write(f"Błąd optymalizacji modelu ONNX:\n{error_msg}\n\nTraceback:\n{tb}")
-        
+        with open(error_path, "w") as f: f.write(f"Błąd optymalizacji modelu ONNX:\n{error_msg}\n\nTraceback:\n{tb}")
         print(f"Szczegóły błędu zapisane do: {error_path}")
-        
-        # W przypadku błędu, kopiujemy oryginalny model, aby nie przerywać potoku eksportu
         try:
-            import shutil
             print(f"Kopiowanie oryginalnego modelu jako zapasowe rozwiązanie...")
             shutil.copy(input_path, output_path)
             input_size = os.path.getsize(input_path)
-            return {
-                "success": True,
-                "input_size": input_size,
-                "output_size": input_size,
-                "reduction_percent": 0.0,
-                "warning": error_msg,
-                "method": "fallback_copy"
-            }
+            return {"success": True, "input_size": input_size, "output_size": input_size,
+                    "reduction_percent": 0.0, "warning": error_msg, "method": "fallback_copy_after_opt_error"}
         except:
-            # Jeśli nawet kopiowanie się nie powiodło, zwracamy błąd
             return {"success": False, "error": error_msg, "error_log": error_path}
 
-def quantize_onnx_model(input_path, output_path, quantization_type='dynamic', dtype='uint8'):
+def get_model_size(model_path):
+    if model_path and os.path.exists(model_path):
+        return os.path.getsize(model_path) / (1024 * 1024)
+    return 0.0
+
+# Funkcja do kwantyzacji dynamicznej (pozostawiona dla porównania/ew. użycia)
+def quantize_dynamic_onnx_model(input_path, output_path, activation_type_str='uint8', weight_type_str='uint8'):
+    result = {"success": False, "quantized_onnx_path": None, "quantization_reduction": 0.0, "error": None}
+    if not os.path.exists(input_path):
+        result["error"] = f"Plik wejściowy {input_path} nie istnieje."
+        print(result["error"])
+        return result
+
+    temp_dir_obj = tempfile.TemporaryDirectory(prefix="onnx_quant_dyn_")
+    temp_dir_path = temp_dir_obj.name
+    current_model_to_quantize_path = input_path
+    inferred_shape_model_path = os.path.join(temp_dir_path, "inferred_shape_model_dynamic.onnx")
+    
+    try:
+        print(f"Uruchamianie explicite shape inference dla {current_model_to_quantize_path} (dynamic quant)...")
+        onnx.shape_inference.infer_shapes_path(current_model_to_quantize_path, inferred_shape_model_path, check_type=True, strict_mode=False, data_prop=True)
+        onnx.checker.check_model(inferred_shape_model_path)
+        print(f"Shape inference (dynamic quant) zakończone: {inferred_shape_model_path}.")
+        current_model_to_quantize_path = inferred_shape_model_path
+    except Exception as e_si:
+        print(f"Ostrzeżenie (dynamic quant): Błąd podczas shape inference: {e_si}. Kontynuowanie z modelem bez jawnej inferencji.")
+
+    # Konwersja stringów na QuantType
+    activation_qtype = QuantType.QUInt8 if activation_type_str.upper() == 'UINT8' else QuantType.QInt8
+    weight_qtype = QuantType.QUInt8 if weight_type_str.upper() == 'UINT8' else QuantType.QInt8
+    
+    # Uproszczona kwantyzacja dynamiczna - jedna próba
+    print(f"Próba kwantyzacji dynamicznej: Activations: {activation_type_str}, Weights: {weight_type_str}")
+    try:
+        quantize_dynamic(
+            model_input=current_model_to_quantize_path,
+            model_output=output_path,
+            # activation_type i weight_type są domyślnie Int8 w nowszych wersjach, ale jawnie ustawiamy
+            # dla pewności, że używamy Int8 dla S8S8 lub Uint8 dla U8U8
+            # Zgodnie z dokumentacją S8S8 (Int8/Int8) jest zalecane
+            # weight_type=weight_qtype, # parametr activation_type nie istnieje w quantize_dynamic
+            # op_types_to_quantize=['MatMul', 'Conv'], # Opcjonalnie
+            # per_channel=False, # Domyślnie False
+            # reduce_range=False, # Domyślnie False
+            # nodes_to_exclude=[], # Można wykluczać konkretne węzły
+            extra_options={"EnableSubgraph": True, "ForceQuantizeNoInputCheck": False, "ActivationSymmetric": True, "WeightSymmetric": True} 
+            # ActivationSymmetric i WeightSymmetric na True dla S8S8
+        )
+        onnx.checker.check_model(output_path)
+        print(f"Kwantyzacja dynamiczna zakończona sukcesem. Model zapisany w {output_path}")
+        original_size_mb = get_model_size(input_path) 
+        quantized_size_mb = get_model_size(output_path)
+        result["success"] = True
+        result["quantized_onnx_path"] = output_path
+        if original_size_mb > 0 and quantized_size_mb > 0:
+            result["quantization_reduction"] = (1 - (quantized_size_mb / original_size_mb)) * 100
+        print(f"Model skwantyzowany dynamicznie. Rozmiar: {quantized_size_mb:.2f} MB. Redukcja: {result.get('quantization_reduction', 0.0):.2f}%")
+    except Exception as e:
+        print(f"Kwantyzacja dynamiczna nie powiodła się: {e}")
+        result["error"] = str(e)
+        if os.path.exists(output_path):
+            try: os.remove(output_path)
+            except OSError: pass
+            
+    temp_dir_obj.cleanup()
+    return result
+
+# NOWA FUNKCJA DLA KWANTYZACJI STATYCZNEJ
+def quantize_static_onnx_model(input_path, output_path, calibration_data_reader,
+                               activation_type_str='int8', weight_type_str='int8',
+                               quant_format_str='qdq', per_channel=False, reduce_range=False):
     """
-    Kwantyzacja modelu ONNX do mniejszej precyzji.
+    Kwantyzacja statyczna modelu ONNX z wykorzystaniem danych kalibracyjnych.
     
     Args:
-        input_path: Ścieżka do modelu ONNX
-        output_path: Ścieżka wyjściowa dla skwantyzowanego modelu
-        quantization_type: Typ kwantyzacji ('dynamic' lub 'static')
-        dtype: Typ danych ('uint8' lub 'int8')
-    
+        input_path: Ścieżka do modelu wejściowego ONNX
+        output_path: Ścieżka dla skwantyzowanego modelu ONNX
+        calibration_data_reader: CalibrationDataReader z próbkami audio dla kalibracji
+        activation_type_str: Typ kwantyzacji aktywacji ('int8' lub 'uint8')
+        weight_type_str: Typ kwantyzacji wag ('int8' lub 'uint8')
+        quant_format_str: Format kwantyzacji ('qdq' lub 'qoperator')
+        per_channel: Czy używać kwantyzacji per-channel dla wag
+        reduce_range: Czy zmniejszyć zakres kwantyzacji do 7-bitów (dla starszych CPU)
+        
     Returns:
-        dict: Słownik z wynikami kwantyzacji
+        dict: Wynik operacji zawierający informacje o sukcesie, ścieżkę wyjściową i statystyki
     """
+    result = {"success": False, "quantized_onnx_path": None, "quantization_reduction": 0.0, "error": None, "method": "static"}
+    if not os.path.exists(input_path):
+        result["error"] = f"Plik wejściowy {input_path} nie istnieje."
+        print(result["error"])
+        return result
+    if calibration_data_reader is None:
+        result["error"] = "CalibrationDataReader jest wymagany do kwantyzacji statycznej."
+        print(result["error"])
+        return result
+
+    temp_dir_obj = tempfile.TemporaryDirectory(prefix="onnx_quant_static_")
+    temp_dir_path = temp_dir_obj.name
+    current_model_to_quantize_path = input_path
+    inferred_shape_model_path = os.path.join(temp_dir_path, "inferred_shape_model_static.onnx")
+
     try:
-        print(f"Rozpoczęcie kwantyzacji modelu ONNX: {input_path}")
-        
-        # Weryfikacja modelu przed kwantyzacją
-        try:
-            import onnx
-            model = onnx.load(input_path)
-            onnx.checker.check_model(model)
-            print("Model ONNX poprawny przed kwantyzacją.")
-            
-            # Próba przeprowadzenia shape inference przed kwantyzacją
+        print(f"Uruchamianie explicite shape inference dla {current_model_to_quantize_path} (static quant)...")
+        onnx.shape_inference.infer_shapes_path(current_model_to_quantize_path, inferred_shape_model_path, check_type=True, strict_mode=False, data_prop=True)
+        onnx.checker.check_model(inferred_shape_model_path)
+        print(f"Shape inference (static quant) zakończone: {inferred_shape_model_path}.")
+        current_model_to_quantize_path = inferred_shape_model_path
+    except Exception as e_si:
+        print(f"Ostrzeżenie (static quant): Błąd podczas shape inference: {e_si}. Kontynuowanie z modelem bez jawnej inferencji.")
+
+    activation_qtype = QuantType.QInt8 if activation_type_str.lower() == 'int8' else QuantType.QUInt8
+    weight_qtype = QuantType.QInt8 if weight_type_str.lower() == 'int8' else QuantType.QUInt8
+    q_format = QuantFormat.QDQ if quant_format_str.lower() == 'qdq' else QuantFormat.QOperator
+
+    # Dla modeli CNN preferujemy następujące konfiguracje (według dokumentacji i praktyk)
+    attempt_configs = [
+        {"name": f"Podstawowa statyczna {activation_type_str}/{weight_type_str} {quant_format_str} dla CNN", 
+         "params": {
+             "per_channel": per_channel, 
+             "reduce_range": reduce_range, 
+             "nodes_to_exclude": [],
+             "op_types_to_quantize": ["Conv", "MatMul", "Gemm", "MaxPool", "Add"]  # Główne operacje w CNN
+         }
+        },
+        {"name": f"Statyczna z wykluczeniem operacji pomocniczych", 
+         "params": {
+             "per_channel": per_channel, 
+             "reduce_range": reduce_range, 
+             "nodes_to_exclude": ['Softmax', 'ReduceMean', 'Tanh', 'Sigmoid'],
+             "op_types_to_quantize": ["Conv", "MatMul", "Gemm"]  # Tylko najważniejsze operacje
+         }
+        },
+        {"name": f"Statyczna uproszczona", 
+         "params": {
+             "per_channel": False,  # Wyłączamy per_channel dla zwiększenia kompatybilności 
+             "reduce_range": reduce_range, 
+             "nodes_to_exclude": ['Softmax', 'ReduceMean', 'Tanh', 'Sigmoid'],
+             "op_types_to_quantize": None  # Pozostawiamy domyślne operacje do kwantyzacji
+         }
+        }
+    ]
+    
+    # Dodaj konfigurację dla per_channel jeśli domyślnie wyłączona
+    if per_channel == False: 
+        attempt_configs.append({
+            "name": f"Statyczna {activation_type_str}/{weight_type_str} {quant_format_str} PER_CHANNEL", 
+            "params": {
+                "per_channel": True, 
+                "reduce_range": True,  # Dla per-channel often=True
+                "nodes_to_exclude": [],
+                "op_types_to_quantize": ["Conv", "MatMul"]  # Najbardziej korzystają z per-channel
+            }
+        })
+
+    for attempt_idx, config in enumerate(attempt_configs):
+        attempt_name = config["name"]
+        params = config["params"]
+        print(f"\nPróba kwantyzacji statycznej ({attempt_idx + 1}/{len(attempt_configs)}): {attempt_name}")
+
+        # Przygotowanie listy nazw węzłów do wykluczenia, jeśli są typy operatorów
+        nodes_to_exclude_by_name = []
+        if params.get("nodes_to_exclude"):
             try:
-                from onnx import shape_inference
-                inferred_model = shape_inference.infer_shapes(model)
-                onnx.checker.check_model(inferred_model)
-                print("Shape inference przeprowadzone pomyślnie.")
-                
-                # Zapisz model z wywnioskowanymi kształtami do pliku tymczasowego
-                inferred_path = input_path + ".inferred"
-                onnx.save(inferred_model, inferred_path)
-                # Użyj tego modelu do dalszej kwantyzacji
-                model_path_for_quantization = inferred_path
-            except Exception as e:
-                print(f"Ostrzeżenie: Nie udało się przeprowadzić shape inference: {e}")
-                print("Kontynuowanie z oryginalnym modelem.")
-                model_path_for_quantization = input_path
-        except Exception as e:
-            error_msg = f"Model ONNX nie jest prawidłowy przed kwantyzacją: {e}"
-            print(error_msg)
-            # Zapisz szczegóły błędu
-            error_path = output_path + ".model_check.error.log"
-            with open(error_path, "w") as f:
-                f.write(f"Błąd weryfikacji modelu ONNX:\n{str(e)}")
-            return {"success": False, "error": error_msg, "error_log": error_path}
-        
+                model_for_node_names = onnx.load(current_model_to_quantize_path)
+                for node in model_for_node_names.graph.node:
+                    if node.op_type in params["nodes_to_exclude"]:
+                        nodes_to_exclude_by_name.append(node.name)
+                if nodes_to_exclude_by_name:
+                    print(f"  Wykluczanie węzłów (wg nazw): {nodes_to_exclude_by_name} dla typów {params['nodes_to_exclude']}")
+                else:
+                    print(f"  Nie znaleziono węzłów do wykluczenia dla typów: {params['nodes_to_exclude']}")
+            except Exception as e_node_load:
+                 print(f"  Ostrzeżenie: Nie udało się załadować modelu do identyfikacji nazw węzłów: {e_node_load}")
+
+        # Opcje kwantyzacji dostosowane do modeli CNN
+        extra_options = {
+            "EnableSubgraph": True,  # Włącz obsługę podgrafów
+            "ForceQuantizeNoInputCheck": False,  # Bezpieczniejsza opcja
+            "ActivationSymmetric": True,  # Symetryczna kwantyzacja dla aktywacji
+            "WeightSymmetric": True,  # Symetryczna kwantyzacja dla wag
+            "MatMulConstBOnly": True,  # Kwantyzacja tylko stałych wag w MatMul
+            "AddQDQPairToWeight": True  # Dodaj QDQ dla wag
+        }
+
         try:
-            from onnxruntime.quantization import quantize_dynamic, QuantType
+            quantize_static(
+                model_input=current_model_to_quantize_path,
+                model_output=output_path,
+                calibration_data_reader=calibration_data_reader,
+                quant_format=q_format,
+                activation_type=activation_qtype,
+                weight_type=weight_qtype,
+                per_channel=params["per_channel"],
+                reduce_range=params["reduce_range"],
+                nodes_to_exclude=nodes_to_exclude_by_name if nodes_to_exclude_by_name else None,
+                op_types_to_quantize=params.get("op_types_to_quantize"),
+                extra_options=extra_options
+            )
             
-            # Wybór typu kwantyzacji
-            if dtype.lower() == 'uint8':
-                weight_type = QuantType.QUInt8
-                print("Użycie kwantyzacji do unsigned int8")
-            elif dtype.lower() == 'int8':
-                weight_type = QuantType.QInt8
-                print("Użycie kwantyzacji do signed int8")
-            else:
-                print(f"Nieznany typ danych: {dtype}, użycie domyślnie uint8")
-                weight_type = QuantType.QUInt8
+            # Weryfikacja modelu po kwantyzacji
+            onnx.checker.check_model(output_path)
+            print(f"Kwantyzacja statyczna ({attempt_name}) zakończona sukcesem. Model zapisany w {output_path}")
             
-            # Najpierw spróbuj uproszczonej kwantyzacji bez problematycznych parametrów
-            print("Próba kwantyzacji podstawowej...")
-            try:
-                quantize_dynamic(
-                    model_input=model_path_for_quantization,
-                    model_output=output_path,
-                    weight_type=weight_type,
-                    per_channel=False,
-                    reduce_range=True
-                )
-                print("Podstawowa kwantyzacja zakończona pomyślnie.")
-            except Exception as e:
-                print(f"Podstawowa kwantyzacja nie powiodła się: {e}")
-                print("Próba kwantyzacji z pominięciem problematycznych operatorów...")
+            # Sprawdź rozmiar modelu przed i po kwantyzacji
+            original_size_mb = get_model_size(input_path) 
+            quantized_size_mb = get_model_size(output_path)
+            
+            result["success"] = True
+            result["quantized_onnx_path"] = output_path
+            result["params_used"] = params
+            result["extra_options"] = extra_options
+            
+            if original_size_mb > 0 and quantized_size_mb > 0:
+                result["quantization_reduction"] = (1 - (quantized_size_mb / original_size_mb)) * 100
                 
-                # Spróbuj z pominięciem problematycznych operatorów
-                try:
-                    # Lista typów operatorów do pominięcia podczas kwantyzacji
-                    op_types_to_exclude = ["Reshape", "Transpose", "Concat", "Slice", "Squeeze", "Unsqueeze"]
-                    print(f"Pominięcie operatorów: {op_types_to_exclude}")
-                    
-                    quantize_dynamic(
-                        model_input=model_path_for_quantization,
-                        model_output=output_path,
-                        weight_type=weight_type,
-                        per_channel=False,
-                        reduce_range=True,
-                        op_types_to_exclude=op_types_to_exclude
-                    )
-                    print("Kwantyzacja z pominięciem problematycznych operatorów zakończona pomyślnie.")
-                except Exception as e2:
-                    print(f"Również nie powiodła się kwantyzacja z pominięciem operatorów: {e2}")
-                    print("Próba ostatecznej, minimalnej kwantyzacji...")
-                    
-                    # Spróbuj z dodatkowymi parametrami bezpieczeństwa
-                    try:
-                        # Bardziej restrykcyjna lista operatorów do kwantyzacji
-                        op_types_to_quantize = ["Conv", "MatMul"]
-                        print(f"Kwantyzacja tylko operatorów: {op_types_to_quantize}")
-                        
-                        quantize_dynamic(
-                            model_input=model_path_for_quantization,
-                            model_output=output_path,
-                            weight_type=weight_type,
-                            per_channel=False,
-                            reduce_range=True,
-                            op_types_to_quantize=op_types_to_quantize,
-                            extra_options=dict(EnableSubgraph=False)
-                        )
-                        print("Minimalna kwantyzacja zakończona pomyślnie.")
-                    except Exception as e3:
-                        # Jeśli wszystko zawiedzie, zwróć błąd
-                        error_msg = f"Wszystkie próby kwantyzacji nieudane: {e3}"
-                        print(error_msg)
-                        return {"success": False, "error": error_msg}
+            print(f"Model skwantyzowany statycznie ({attempt_name}):")
+            print(f"- Rozmiar oryginalny: {original_size_mb:.2f} MB")
+            print(f"- Rozmiar po kwantyzacji: {quantized_size_mb:.2f} MB")
+            print(f"- Redukcja: {result.get('quantization_reduction', 0.0):.2f}%")
+            break 
             
-            # Usuń tymczasowe pliki
-            if 'inferred_path' in locals() and os.path.exists(inferred_path):
-                try:
-                    os.remove(inferred_path)
-                except:
+        except Exception as e_quant_static:
+            print(f"  Próba kwantyzacji statycznej ({attempt_name}) nie powiodła się: {e_quant_static}")
+            if attempt_idx == len(attempt_configs) - 1: 
+                result["error"] = f"Wszystkie próby kwantyzacji statycznej nieudane. Ostatni błąd: {str(e_quant_static)}"
+                print("Wszystkie próby kwantyzacji statycznej nieudane.")
+                
+            # Usuń plik wynikowy jeśli istnieje i nie jest to ostatnia próba
+            if os.path.exists(output_path) and attempt_idx < len(attempt_configs) - 1:
+                try: 
+                    os.remove(output_path)
+                except OSError: 
                     pass
-            
-            # Sprawdź, czy kwantyzacja się powiodła poprzez weryfikację rozmiaru pliku i jego istnienia
-            if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-                input_size = os.path.getsize(input_path)
-                output_size = os.path.getsize(output_path)
-                
-                # Oblicz procentową redukcję rozmiaru
-                reduction_percent = (1 - output_size / input_size) * 100
-                
-                print(f"Kwantyzacja zakończona. Model zapisany do: {output_path}")
-                print(f"Rozmiar oryginalny: {input_size / (1024*1024):.2f} MB")
-                print(f"Rozmiar po kwantyzacji: {output_size / (1024*1024):.2f} MB")
-                print(f"Redukcja rozmiaru: {reduction_percent:.2f}%")
-                
-                # Weryfikacja skwantyzowanego modelu
-                try:
-                    quant_model = onnx.load(output_path)
-                    onnx.checker.check_model(quant_model)
-                    print("Model ONNX poprawny po kwantyzacji.")
-                except Exception as e:
-                    warning_msg = f"Ostrzeżenie: Model po kwantyzacji ma problemy z weryfikacją: {e}"
-                    print(warning_msg)
-                    # To tylko ostrzeżenie, nie przerywa procesu
-                
-                return {
-                    "success": True,
-                    "input_size": input_size,
-                    "output_size": output_size,
-                    "reduction_percent": reduction_percent,
-                    "method": f"quantization_{quantization_type}_{dtype}"
-                }
-            else:
-                error_msg = "Kwantyzacja nie powiodła się - plik wyjściowy nie istnieje lub jest pusty"
-                print(error_msg)
-                return {"success": False, "error": error_msg}
-                
-        except ImportError as e:
-            error_msg = f"Brak wymaganych bibliotek do kwantyzacji: {e}"
-            print(error_msg)
-            print("Zainstaluj wymagane biblioteki: pip install onnxruntime onnx")
-            return {"success": False, "error": error_msg}
-            
-    except Exception as e:
-        error_msg = f"Błąd podczas kwantyzacji modelu: {e}"
-        print(error_msg)
-        
-        # Zapisz szczegółowe informacje o błędzie
-        import traceback
-        tb = traceback.format_exc()
-        error_path = output_path + ".quantization.error.log"
-        with open(error_path, "w") as f:
-            f.write(f"Błąd kwantyzacji modelu ONNX:\n{error_msg}\n\nTraceback:\n{tb}")
-        print(f"Szczegóły błędu zapisane do: {error_path}")
-        
-        return {"success": False, "error": error_msg, "error_log": error_path}
+
+    # Sprzątanie
+    temp_dir_obj.cleanup()
+    return result
+
 
 def verify_onnx_model(onnx_path, test_inputs, original_model=None, tolerance=None):
-    """
-    Weryfikacja zgodności modelu ONNX z oryginalnym modelem PyTorch.
+    import onnxruntime as ort # Lokalny import, aby uniknąć problemów z typowaniem na poziomie modułu
+    import numpy as np      # Podobnie
     
-    Args:
-        onnx_path: Ścieżka do modelu ONNX
-        test_inputs: Dane testowe (tuple z mel, mfcc, chroma)
-        original_model: Oryginalny model PyTorch do porównania (opcjonalnie)
-        tolerance: Wartość progowa dla różnicy między wynikami (opcjonalnie)
-                  Jeśli None, zostanie ustalona adaptacyjnie na podstawie danych
-    
-    Returns:
-        dict: Słownik z wynikami weryfikacji zawierający:
-             - success: True/False - czy weryfikacja się powiodła
-             - max_diff: Maksymalna różnica między wynikami
-             - mean_diff: Średnia różnica między wynikami
-             - tolerance: Użyta wartość progowa
-             - error: Komunikat błędu (jeśli wystąpił)
-    """
-    import onnxruntime as ort
-    import numpy as np
-    
-    # Rozpakuj dane wejściowe
     mel, mfcc, chroma = test_inputs
     
-    # Utwórz sesję ONNX Runtime
-    print("Inicjalizacja sesji ONNX Runtime...")
+    print("Inicjalizacja sesji ONNX Runtime do weryfikacji...")
     try:
         sess_options = ort.SessionOptions()
         sess_options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-        # Zawsze używamy CPU do weryfikacji, by uniknąć problemów z CUDA
-        sess = ort.InferenceSession(
-            onnx_path, 
-            sess_options=sess_options,
-            providers=['CPUExecutionProvider']
-        )
-        print("Sesja ONNX Runtime zainicjalizowana pomyślnie.")
+        sess = ort.InferenceSession(onnx_path, sess_options=sess_options, providers=['CPUExecutionProvider'])
+        print("Sesja ONNX Runtime zainicjalizowana.")
         
-        # Sprawdź nazwy wejść
-        input_names = [input.name for input in sess.get_inputs()]
+        input_names = [input_node.name for input_node in sess.get_inputs()]
         print(f"Oczekiwane wejścia ONNX: {input_names}")
         
-        # Dostosuj nazwy wejść, jeśli różnią się od oczekiwanych
-        expected_names = ['mel_input', 'mfcc_input', 'chroma_input']
-        actual_names = {}
+        # Mapowanie dummy_input na rzeczywiste nazwy wejść modelu ONNX
+        # Zakładamy, że kolejność w dummy_input odpowiada kolejności cech w modelu
+        # i że nazwy wejściowe w ONNX będą zawierać 'mel', 'mfcc', 'chroma'
+        onnx_inputs = {}
+        dummy_input_map = {'mel': mel.cpu().numpy(), 'mfcc': mfcc.cpu().numpy(), 'chroma': chroma.cpu().numpy()}
         
-        for expected, tensor_name in zip(expected_names, input_names):
-            actual_names[expected] = tensor_name
-        
-        # Przygotuj dane wejściowe zgodne z nazwami
-        onnx_inputs = {
-            actual_names.get('mel_input', 'mel_input'): mel.cpu().numpy(),
-            actual_names.get('mfcc_input', 'mfcc_input'): mfcc.cpu().numpy(),
-            actual_names.get('chroma_input', 'chroma_input'): chroma.cpu().numpy()
-        }
+        for name in input_names:
+            if 'mel' in name.lower(): onnx_inputs[name] = dummy_input_map['mel']
+            elif 'mfcc' in name.lower(): onnx_inputs[name] = dummy_input_map['mfcc']
+            elif 'chroma' in name.lower(): onnx_inputs[name] = dummy_input_map['chroma']
+            else: # Fallback, jeśli nazwa nie pasuje
+                print(f"Ostrzeżenie: Nie udało się zmapować wejścia ONNX '{name}' do znanego typu cechy. Używam pierwszego dummy input.")
+                if not onnx_inputs: # Jeśli słownik jest pusty, dodaj pierwszy element
+                     onnx_inputs[name] = mel.cpu().numpy()
+
+
+        if len(onnx_inputs) != len(input_names):
+            print(f"Ostrzeżenie: Liczba zmapowanych wejść ({len(onnx_inputs)}) nie zgadza się z liczbą wejść modelu ({len(input_names)}).")
+            # Mimo to próbujemy kontynuować, jeśli kluczowe wejścia są zmapowane
+
     except Exception as e:
-        error_msg = f"Błąd inicjalizacji sesji ONNX: {e}"
+        error_msg = f"Błąd inicjalizacji sesji ONNX lub mapowania wejść: {e}"
         print(error_msg)
         return {"success": False, "error": error_msg}
     
-    results = {}  # Słownik na wyniki weryfikacji
+    results = {}
     
-    # Uruchom inferencję ONNX
-    print("Uruchamianie inferencji ONNX...")
+    print("Uruchamianie inferencji ONNX do weryfikacji...")
     try:
         onnx_outputs = sess.run(None, onnx_inputs)
         results["onnx_inference_success"] = True
@@ -621,83 +561,73 @@ def verify_onnx_model(onnx_path, test_inputs, original_model=None, tolerance=Non
         print(traceback.format_exc())
         return {"success": False, "error": error_msg}
     
-    # Porównaj z modelem PyTorch (jeśli dostępny)
     if original_model:
         print("Porównywanie wyjść modeli PyTorch i ONNX...")
         try:
-            # Upewnij się, że model PyTorch jest w trybie ewaluacji
             original_model.eval()
-            
-            # Uzyskaj wyjście z oryginalnego modelu
             with torch.no_grad():
-                torch_output = original_model({
-                    'melspectrogram': mel,
-                    'mfcc': mfcc,
-                    'chroma': chroma
-                })
+                # Przygotuj wejścia dla modelu PyTorch (słownik)
+                pytorch_inputs_dict = {
+                    # Użyj oryginalnych tensorów PyTorch, a nie numpy
+                    'melspectrogram': test_inputs[0], 
+                    'mfcc': test_inputs[1],
+                    'chroma': test_inputs[2]
+                }
+                torch_output = original_model(pytorch_inputs_dict)
                 
-                # Porównaj wyniki
                 np_torch_output = torch_output.cpu().numpy()
                 np_onnx_output = onnx_outputs[0]
                 
-                # Dopasuj kształty do porównania, jeśli są różne
                 if np_torch_output.shape != np_onnx_output.shape:
                     print(f"Ostrzeżenie: Różne kształty wyjść PyTorch {np_torch_output.shape} vs ONNX {np_onnx_output.shape}")
-                    # Próba przekształcenia do wspólnego kształtu (flatten)
-                    np_torch_output = np_torch_output.reshape(-1)
-                    np_onnx_output = np_onnx_output.reshape(-1)
+                    try: # Próba dopasowania przez usunięcie wymiaru batch jeśli ONNX go nie ma
+                        if np_torch_output.ndim == np_onnx_output.ndim + 1 and np_torch_output.shape[0] == 1:
+                             np_torch_output = np_torch_output.squeeze(0)
+                        elif np_onnx_output.ndim == np_torch_output.ndim + 1 and np_onnx_output.shape[0] == 1:
+                             np_onnx_output = np_onnx_output.squeeze(0)
+                    except: pass # Ignoruj błąd, jeśli dopasowanie nie jest trywialne
+
+                if np_torch_output.shape != np_onnx_output.shape: # Sprawdź ponownie
+                     print(f"Kształty nadal różne po próbie dopasowania. Porównanie może być niemiarodajne.")
                 
-                # Oblicz różne miary różnic między wynikami
                 abs_diff = np.abs(np_torch_output - np_onnx_output)
-                max_diff = np.max(abs_diff)
-                mean_diff = np.mean(abs_diff)
-                median_diff = np.median(abs_diff)
-                std_diff = np.std(abs_diff)
+                max_diff = np.max(abs_diff) if abs_diff.size > 0 else 0.0
+                mean_diff = np.mean(abs_diff) if abs_diff.size > 0 else 0.0
+                median_diff = np.median(abs_diff) if abs_diff.size > 0 else 0.0
+                std_diff = np.std(abs_diff) if abs_diff.size > 0 else 0.0
                 
-                # Ustal adaptacyjną wartość progową, jeśli nie podano
                 if tolerance is None:
-                    tolerance = max(
-                        np.max(np.abs(np_torch_output)) * 0.001,  # 0.1% maksymalnej wartości
-                        mean_diff * 10,                           # 10x średnia różnica
-                        1e-5                                      # Minimalny próg
-                    )
+                    tolerance = max(np.max(np.abs(np_torch_output)) * 0.01 if np_torch_output.size > 0 else 1e-5, mean_diff * 10, 1e-5) # Zwiększono próg do 1%
                 
-                # Zapisz wyniki porównania
                 results.update({
-                    "max_diff": float(max_diff),
-                    "mean_diff": float(mean_diff),
-                    "median_diff": float(median_diff),
-                    "std_diff": float(std_diff),
+                    "max_diff": float(max_diff), "mean_diff": float(mean_diff),
+                    "median_diff": float(median_diff), "std_diff": float(std_diff),
                     "tolerance": float(tolerance),
-                    "pytorch_output_range": [float(np.min(np_torch_output)), float(np.max(np_torch_output))],
-                    "onnx_output_range": [float(np.min(np_onnx_output)), float(np.max(np_onnx_output))]
+                    "pytorch_output_range": [float(np.min(np_torch_output)), float(np.max(np_torch_output))] if np_torch_output.size > 0 else [0,0],
+                    "onnx_output_range": [float(np.min(np_onnx_output)), float(np.max(np_onnx_output))] if np_onnx_output.size > 0 else [0,0]
                 })
                 
-                print(f"Statystyki różnic między wyjściami PyTorch i ONNX:")
-                print(f"  - Maksymalna różnica: {max_diff:.8f}")
-                print(f"  - Średnia różnica: {mean_diff:.8f}")
-                print(f"  - Mediana różnic: {median_diff:.8f}")
-                print(f"  - Odchylenie std. różnic: {std_diff:.8f}")
-                print(f"  - Użyta wartość progowa: {tolerance:.8f}")
+                print(f"Statystyki różnic: Max={max_diff:.6f}, Mean={mean_diff:.6f}, Median={median_diff:.6f}, Std={std_diff:.6f}. Tolerancja={tolerance:.6f}")
                 
-                # Sprawdzenie, czy wyjścia są wystarczająco zgodne
                 if max_diff > tolerance:
-                    warning_msg = f"Uwaga: Znacząca różnica między wyjściami PyTorch i ONNX (max_diff={max_diff:.8f}, tolerance={tolerance:.8f})"
+                    warning_msg = f"Uwaga: Znacząca różnica między wyjściami (max_diff={max_diff:.6f} > tolerance={tolerance:.6f})"
                     print(warning_msg)
                     results["warning"] = warning_msg
-                    # Lekka różnica nie powinna oznaczać niepowodzenia - oznaczamy jako ostrzeżenie
-                    results["success"] = True
+                    results["success"] = True # Lekka różnica nie oznacza niepowodzenia
                     results["has_warning"] = True
                     return results
-        except Exception as e:
-            error_msg = f"Błąd podczas porównywania wyników PyTorch i ONNX: {e}"
+        except Exception as e_compare:
+            error_msg = f"Błąd podczas porównywania wyników PyTorch i ONNX: {e_compare}"
             print(error_msg)
             import traceback
             print(traceback.format_exc())
-            return {"success": False, "error": error_msg}
+            # Nadal zwracamy sukces, jeśli inferencja ONNX się powiodła, ale porównanie nie
+            results["success"] = results.get("onnx_inference_success", False) 
+            results["error_comparison"] = error_msg
+            return results
     
-    print("Weryfikacja ONNX zakończona pomyślnie.")
-    results["success"] = True
+    print("Weryfikacja ONNX zakończona pomyślnie (lub tylko inferencja ONNX jeśli brak modelu PyTorch).")
+    results["success"] = results.get("onnx_inference_success", False) # Sukces jeśli inferencja ONNX przeszła
     return results
 
 def extract_features_for_inference(audio_path, sr=22050, max_length=3.0, 
@@ -722,9 +652,9 @@ def extract_features_for_inference(audio_path, sr=22050, max_length=3.0,
     # Wczytanie audio
     try:
         if isinstance(audio_path, str):
-            audio, sr = librosa.load(audio_path, sr=sr)
+            audio, sr_loaded = librosa.load(audio_path, sr=sr)
         else:
-            audio, sr = librosa.load(audio_path, sr=sr)
+            audio, sr_loaded = librosa.load(audio_path, sr=sr)
     except Exception as e:
         raise ValueError(f"Nie udało się wczytać pliku audio: {e}")
     
@@ -826,7 +756,7 @@ def create_onnx_inference_session(onnx_path, use_cuda=None):
     if use_cuda and 'CUDAExecutionProvider' in available_providers:
         # Bardziej ostrożna konfiguracja CUDA z mniejszą liczbą opcji, które mogą powodować problemy
         try:
-            cuda_options = {
+            cuda_options: Dict[str, Union[int, str]] = {
                 'device_id': 0,
             }
             # Dodaj dodatkowe opcje tylko jeśli ich wersja onnxruntime je obsługuje

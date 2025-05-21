@@ -42,6 +42,7 @@ OPTUNA_TIMEOUT = 3600  # 1 godzina
 
 # Ogólne ustawienia
 MAX_LENGTH = 3.0
+SAMPLE_RATE = 22050 # Dodana domyślna częstotliwość próbkowania
 
 # Ustawienia ekstrakcji cech
 HOP_LENGTH = 512
