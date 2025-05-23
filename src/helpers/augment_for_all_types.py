@@ -254,11 +254,71 @@ class SpectralContrastAugmentation(AudioAugmentationStrategy):
 
         return result
 
+class HPSSAugmentation(AudioAugmentationStrategy):
+    def apply_augmentation(self, feature, augmentation_prob=0.5):
+        aug_feature = feature.copy()
+        
+        if np.random.random() < augmentation_prob:
+            aug_feature = self._add_noise(aug_feature)
+        if np.random.random() < augmentation_prob:
+            aug_feature = self._frequency_mask(aug_feature)
+        if np.random.random() < augmentation_prob:
+            aug_feature = self._time_mask(aug_feature)
+        if np.random.random() < augmentation_prob:
+            aug_feature = self._time_shift(aug_feature)
+            
+        return aug_feature
+    
+    def is_applicable(self, feature):
+        # Weryfikacja, czy dane mają 2D i wystarczający rozmiar
+        return feature.ndim == 2 and min(feature.shape) > 1
+    
+    def _add_noise(self, spectrogram, noise_level=0.005):
+        noise = np.random.randn(*spectrogram.shape) * noise_level
+        return spectrogram + noise
+    
+    def _time_shift(self, spectrogram, shift_range=5):
+        shift = np.random.randint(-shift_range, shift_range)
+        if shift > 0:
+            return np.pad(spectrogram, ((0, 0), (0, shift)), mode='constant')[:, shift:]
+        else:
+            return np.pad(spectrogram, ((0, 0), (-shift, 0)), mode='constant')[:, :shift]
+    
+    def _frequency_mask(self, spectrogram, max_mask_width=10, num_masks=1):
+        result = spectrogram.copy()
+        n_mels, n_steps = spectrogram.shape
+        
+        # Dostosowanie szerokości maski, jeśli jest zbyt duża
+        max_mask_width = min(max_mask_width, n_mels - 1)
+        
+        if max_mask_width >= 1:
+            for i in range(num_masks):
+                width = np.random.randint(1, max_mask_width + 1)
+                start = np.random.randint(0, n_mels - width + 1)
+                result[start:start+width, :] = result.min()
+                
+        return result
+    
+    def _time_mask(self, spectrogram, max_mask_width=20, num_masks=1):
+        result = spectrogram.copy()
+        n_mels, n_steps = spectrogram.shape
+        
+        # Dostosowanie szerokości maski, jeśli jest zbyt duża
+        max_mask_width = min(max_mask_width, n_steps - 1)
+        
+        if max_mask_width >= 1:
+            for i in range(num_masks):
+                width = np.random.randint(1, max_mask_width + 1)
+                start = np.random.randint(0, n_steps - width + 1)
+                result[:, start:start+width] = result.min()
+                
+        return result
+
 
 class AudioAugmentationFactory:
     @staticmethod
     def get_strategy(feature_type):
-        if feature_type in ["melspectrogram", "spectrogram"]:
+        if feature_type in ["melspectrogram", "spectrogram", "cqt"]:
             return SpectrogramAugmentation()
         elif feature_type in ["mfcc", "delta_mfcc"]:
             return MFCCAugmentation()
@@ -270,6 +330,8 @@ class AudioAugmentationFactory:
             return TempogramAugmentation()
         elif feature_type == "spectral_contrast":
             return SpectralContrastAugmentation()
+        elif feature_type == "hpss":
+            return HPSSAugmentation()
         else:
             # Domyślna strategia dla innych typów
             return SpectrogramAugmentation()

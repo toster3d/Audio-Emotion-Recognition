@@ -1,4 +1,2 @@
 [lfs]
-    batch = true
-    concurrenttransfers = 10
-    fetchrecentalways = false 
+    # Usunieto niebezpieczne opcje batch, concurrenttransfers, fetchrecentalways 

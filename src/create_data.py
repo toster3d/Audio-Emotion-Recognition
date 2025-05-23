@@ -14,7 +14,7 @@ def download_and_save_dataset():
     dataset = load_dataset("amu-cai/nEMO")
     
     # Zapis zbioru danych w określonej ścieżce
-    dataset.save_to_disk(DATASET_PATH)  # Zapis w ścieżce z konfiguracji
+    dataset.save_to_disk(DATASET_PATH)  # type: ignore
     print(f"Zbiór danych zapisany w {DATASET_PATH}")
     
     return dataset

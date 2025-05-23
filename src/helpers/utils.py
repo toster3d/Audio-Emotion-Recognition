@@ -10,10 +10,8 @@ from sklearn.model_selection import StratifiedKFold
 
 from config import DEVICE, CLASS_NAMES, SEED, CV_FOLDS
 
-# Fix for PyTorch 2.6+ compatibility
 # Add safe globals for numpy functions used in model serialization
 try:
-    # For PyTorch 2.6+
     import torch.serialization
     # Add numpy functions to safe globals
     torch.serialization.add_safe_globals([
@@ -58,8 +56,13 @@ def load_pretrained_model(model_path, model_class, num_classes=6, device=None):
             checkpoint = loading_strategy()
             
             # Sprawdzenie, czy załadowany obiekt to stan modelu czy pełny checkpoint
-            if isinstance(checkpoint, dict) and "state_dict" in checkpoint:
-                state_dict = checkpoint["state_dict"]
+            if isinstance(checkpoint, dict):
+                if "state_dict" in checkpoint:
+                    state_dict = checkpoint["state_dict"]
+                elif "model_state" in checkpoint:  # Obsługa klucza z early_stopping.py
+                    state_dict = checkpoint["model_state"]
+                else:
+                    state_dict = checkpoint
             else:
                 state_dict = checkpoint
                 
@@ -218,7 +221,6 @@ def calculate_metrics(true_labels, predictions, probabilities=None, class_names=
         'precision': precision,
         'recall': recall,
         'f1': f1,
-        'loss': 0.0,  # Dodajemy domyślną wartość straty
         'report': report,
         'cm': cm,
         'preds': predictions,
