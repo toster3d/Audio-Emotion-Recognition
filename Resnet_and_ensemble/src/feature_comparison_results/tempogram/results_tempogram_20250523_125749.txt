@@ -1,0 +1,18 @@
+feature_type: tempogram
+
+HYPERPARAMETERS:
+  batch_size: 32
+  initial_lr: 0.001
+  weight_decay: 1e-05
+  dropout_rate: 0.5
+  early_stopping_patience: 7
+  max_epochs: 50
+  actual_epochs: 32
+
+PERFORMANCE:
+  test_accuracy: 22.74247491638796
+  test_loss: 1.7409787095826248
+  val_accuracy: 25.662482566248258
+  val_loss: 1.7804162916929827
+  training_time: 4189.22775387764
+

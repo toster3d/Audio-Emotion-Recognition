@@ -1,0 +1,4 @@
+Liczba epok: 50
+Najlepsza dokładność walidacji: 0.6318
+Końcowa dokładność walidacji: 0.6192
+Najlepsza dokładność treningu: 0.9962

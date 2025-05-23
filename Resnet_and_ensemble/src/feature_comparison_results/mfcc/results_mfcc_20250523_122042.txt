@@ -1,0 +1,18 @@
+feature_type: mfcc
+
+HYPERPARAMETERS:
+  batch_size: 32
+  initial_lr: 0.001
+  weight_decay: 1e-05
+  dropout_rate: 0.5
+  early_stopping_patience: 7
+  max_epochs: 50
+  actual_epochs: 21
+
+PERFORMANCE:
+  test_accuracy: 71.23745819397993
+  test_loss: 1.152664036586367
+  val_accuracy: 71.96652719665272
+  val_loss: 1.2740831945253455
+  training_time: 377.69113993644714
+

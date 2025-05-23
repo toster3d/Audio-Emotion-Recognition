@@ -1,0 +1,18 @@
+feature_type: melspectrogram
+
+HYPERPARAMETERS:
+  batch_size: 32
+  initial_lr: 0.001
+  weight_decay: 1e-05
+  dropout_rate: 0.5
+  early_stopping_patience: 7
+  max_epochs: 50
+  actual_epochs: 19
+
+PERFORMANCE:
+  test_accuracy: 88.85172798216277
+  test_loss: 0.3171851084615778
+  val_accuracy: 89.8186889818689
+  val_loss: 0.3398874687111896
+  training_time: 932.3795149326324
+

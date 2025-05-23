@@ -1,0 +1,18 @@
+feature_type: chroma
+
+HYPERPARAMETERS:
+  batch_size: 32
+  initial_lr: 0.001
+  weight_decay: 1e-05
+  dropout_rate: 0.5
+  early_stopping_patience: 7
+  max_epochs: 50
+  actual_epochs: 11
+
+PERFORMANCE:
+  test_accuracy: 49.49832775919732
+  test_loss: 1.372868566677488
+  val_accuracy: 55.36959553695955
+  val_loss: 1.8215315963910974
+  training_time: 113.68984389305115
+

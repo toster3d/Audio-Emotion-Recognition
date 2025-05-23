@@ -1,0 +1,2 @@
+DOkładność testowa: 0.6009
+Strata testowa: 1.6799
