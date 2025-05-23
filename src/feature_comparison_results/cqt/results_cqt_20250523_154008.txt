@@ -1,0 +1,18 @@
+feature_type: cqt
+
+HYPERPARAMETERS:
+  batch_size: 32
+  initial_lr: 0.001
+  weight_decay: 1e-05
+  dropout_rate: 0.5
+  early_stopping_patience: 7
+  max_epochs: 50
+  actual_epochs: 32
+
+PERFORMANCE:
+  test_accuracy: 86.39910813823857
+  test_loss: 0.4326876250320467
+  val_accuracy: 85.91352859135286
+  val_loss: 0.5251126535560774
+  training_time: 1240.2788398265839
+
