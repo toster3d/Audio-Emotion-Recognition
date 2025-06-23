@@ -1,0 +1,49 @@
+{
+  "export_info": {
+    "timestamp": "20250523_220342",
+    "exporter_version": "2.0",
+    "pytorch_version": "2.7.0+cpu",
+    "onnx_version": "1.18.0",
+    "onnxruntime_version": "1.19.2"
+  },
+  "model_info": {
+    "feature_types": [
+      "melspectrogram",
+      "mfcc",
+      "hpss",
+      "chroma",
+      "tempogram"
+    ],
+    "num_features": 5,
+    "class_names": [
+      "anger",
+      "fear",
+      "happiness",
+      "neutral",
+      "sadness",
+      "surprised"
+    ],
+    "num_classes": 6
+  },
+  "config": {
+    "opset_version": 19,
+    "sample_rate": 22050,
+    "max_length": 3.0,
+    "optimization_enabled": true,
+    "quantization_enabled": false,
+    "quantization_type": "dynamic"
+  },
+  "export_result": {
+    "success": true,
+    "path": "exported_models\\onnx_optimized\\ensemble_model.onnx",
+    "size_mb": 213.09175491333008,
+    "feature_types": [
+      "melspectrogram",
+      "mfcc",
+      "hpss",
+      "chroma",
+      "tempogram"
+    ],
+    "optimized_path": "exported_models\\onnx_optimized\\ensemble_model.onnx"
+  }
+}

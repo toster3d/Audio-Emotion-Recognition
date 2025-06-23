@@ -1,0 +1,18 @@
+feature_type: hpss
+
+HYPERPARAMETERS:
+  batch_size: 32
+  initial_lr: 0.001
+  weight_decay: 1e-05
+  dropout_rate: 0.5
+  early_stopping_patience: 7
+  max_epochs: 50
+  actual_epochs: 36
+
+PERFORMANCE:
+  test_accuracy: 93.19955406911929
+  test_loss: 0.21713776570134635
+  val_accuracy: 92.18967921896792
+  val_loss: 0.270041788968703
+  training_time: 2199.296313524246
+
